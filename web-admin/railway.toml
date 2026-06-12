@@ -13,4 +13,5 @@
       [trainyard.environments.production.variables]
         NODE_ENV = "production"
         PORT = "3000"
-        NEXT_PUBLIC_API_URL = "https://backend-production.up.railway.app"
+        NEXT_PUBLIC_API_URL = "https://backend-production-92ee.up.railway.app"
+
