@@ -1,0 +1,747 @@
+﻿"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import DashboardLayout from "../../components/layout/DashboardLayout";
+import { api } from "../../lib/api";
+
+const cb: React.CSSProperties = { background: "#fff", borderRadius: 6, boxShadow: "0 1px 2px rgba(0,0,0,0.04)", overflow: "hidden" };
+const th: React.CSSProperties = { padding: "10px 12px", textAlign: "left", fontSize: 12, fontWeight: 600, color: "#888", background: "#fafafa", borderBottom: "1px solid #f0f0f0", whiteSpace: "nowrap" };
+const td: React.CSSProperties = { padding: "10px 12px", fontSize: 13, color: "#333", borderBottom: "1px solid #f0f0f0" };
+const ts = (bg: string, color: string): React.CSSProperties => ({ display: "inline-flex", alignItems: "center", fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 2, background: bg, color, whiteSpace: "nowrap" });
+const bp: React.CSSProperties = { height: 36, padding: "0 16px", borderRadius: 4, border: "none", background: "#1890ff", color: "#fff", fontSize: 13, fontWeight: 500, cursor: "pointer" };
+const bgBtn: React.CSSProperties = { ...bp, background: "#52c41a" };
+const si: React.CSSProperties = { width: "100%", height: 36, padding: "0 12px", borderRadius: 4, border: "1px solid #d9d9d9", fontSize: 14, outline: "none", boxSizing: "border-box", background: "#fff" };
+const sl: React.CSSProperties = { fontSize: 12, fontWeight: 500, color: "#888", marginBottom: 4 };
+const modalBg: React.CSSProperties = { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 };
+const modalCard: React.CSSProperties = { background: "#fff", borderRadius: 8, padding: 24, width: 600, maxHeight: "85vh", overflow: "auto", boxShadow: "0 4px 12px rgba(0,0,0,0.15)" };
+const actionBtn: React.CSSProperties = { height: 28, padding: "0 10px", borderRadius: 3, border: "1px solid #d9d9d9", background: "#fff", color: "#666", fontSize: 12, cursor: "pointer" };
+
+const tabs = [
+  { key: "params", label: "系統參數" },
+  { key: "roles", label: "角色管理" },
+  { key: "users", label: "使用者管理" },
+  { key: "audit", label: "審計日誌" },
+  { key: "devices", label: "設備綁定" },
+{ key: "company", label: "公司資訊" },
+  { key: "org", label: "組織架構" },
+  { key: "imports", label: "資料匯入" },
+  { key: "print", label: "列印模板" },{ key: "applications", label: "帳號申請" },
+];
+
+const importEntities = [
+  { key: "customers", label: "客戶資料", template: "customer_code,customer_name,contact_person,phone,email,address" },
+  { key: "products", label: "產品資料", template: "product_code,product_name,category,base_price" },
+  { key: "suppliers", label: "供應商資料", template: "supplier_code,supplier_name,contact_person,contact_phone,payment_terms" },
+  { key: "employees", label: "員工資料", template: "employee_no,full_name,role_code,region_code,email,phone" },
+  { key: "inventory", label: "庫存資料", template: "batch_no,product_id,expiry_date,manufacturer,qa_status,total_quantity" },
+];
+
+function ImportSection() {
+  const [entity, setEntity] = useState("customers");
+  const [csvText, setCsvText] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState<any>(null);
+
+  const parseCsv = (text: string): any[] => {
+    const lines = text.trim().split("\n").filter(l => l.trim());
+    if (lines.length < 2) return [];
+    const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
+    return lines.slice(1).map(line => {
+      const vals = line.split(",").map(v => v.trim().replace(/^"|"$/g, ""));
+      const row: any = {};
+      headers.forEach((h, i) => { row[h] = vals[i] || ""; });
+      return row;
+    });
+  };
+
+  const doImport = async () => {
+    const rows = parseCsv(csvText);
+    if (rows.length === 0) { alert("請貼上有效的 CSV 資料（至少含標題行 + 1 筆資料）"); return; }
+    if (rows.length > 500) { alert("單次最多 500 筆資料"); return; }
+    setImporting(true); setResult(null);
+    try {
+      const r = await api.post("/system/import/" + entity, { rows });
+      setResult(r.data);
+    } catch (e: any) { alert(e?.response?.data?.message || "匯入失敗"); }
+    finally { setImporting(false); }
+  };
+
+  const downloadTemplate = () => {
+    const e = importEntities.find(ent => ent.key === entity);
+    if (!e) return;
+    const blob = new Blob(["\uFEFF" + e.template + "\n"], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = entity + "_template.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div style={cb}>
+        <div style={{ display: "grid", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: "#999", marginBottom: 4 }}>匯入類型</div>
+            <select value={entity} onChange={e => setEntity(e.target.value)} style={{ width: "100%", height: 36, padding: "0 12px", borderRadius: 4, border: "1px solid #d9d9d9", fontSize: 14, outline: "none", background: "#fff", boxSizing: "border-box" }}>
+              {importEntities.map(e => <option key={e.key} value={e.key}>{e.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <div style={{ fontSize: 12, fontWeight: 500, color: "#999" }}>CSV 資料內容</div>
+              <button onClick={downloadTemplate} style={{ fontSize: 11, color: "#1890ff", background: "none", border: "none", cursor: "pointer" }}>下載模板</button>
+            </div>
+            <textarea style={{ width: "100%", height: 180, padding: "8px 12px", borderRadius: 4, border: "1px solid #d9d9d9", fontSize: 12, fontFamily: "monospace", resize: "vertical", boxSizing: "border-box", outline: "none", background: "#fff" }}
+              value={csvText} onChange={e => setCsvText(e.target.value)}
+              placeholder={importEntities.find(e => e.key === entity)?.template + "\n..."} />
+          </div>
+          <button onClick={doImport} disabled={importing} style={{ height: 36, padding: "0 20px", borderRadius: 4, border: "none", background: "#52c41a", color: "#fff", fontSize: 14, fontWeight: 500, cursor: "pointer", width: "fit-content", opacity: importing ? 0.6 : 1 }}>{importing ? "匯入中..." : "開始匯入"}</button>
+        </div>
+      </div>
+      <div style={{ display: "grid", gap: 16 }}>
+        {result && (
+          <div style={cb}>
+            <h3 style={{ fontSize: 15, fontWeight: 600, color: "#333", margin: "0 0 12px" }}>匯入結果</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+              <div style={{ textAlign: "center", padding: 10, background: "#f6ffed", borderRadius: 4 }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#52c41a" }}>{result.total}</div>
+                <div style={{ fontSize: 11, color: "#999" }}>總計</div>
+              </div>
+              <div style={{ textAlign: "center", padding: 10, background: "#e6f7ff", borderRadius: 4 }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#1890ff" }}>{result.success}</div>
+                <div style={{ fontSize: 11, color: "#999" }}>成功</div>
+              </div>
+              <div style={{ textAlign: "center", padding: 10, background: "#fff1f0", borderRadius: 4 }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#ff4d4f" }}>{result.failed}</div>
+                <div style={{ fontSize: 11, color: "#999" }}>失敗</div>
+              </div>
+            </div>
+            {result.errors && result.errors.length > 0 && (
+              <div style={{ fontSize: 11, color: "#ff4d4f", maxHeight: 120, overflow: "auto", marginTop: 8 }}>
+                {result.errors.slice(0,10).map((e: string, i: number) => <div key={i}>{e}</div>)}
+              </div>
+            )}
+          </div>
+        )}
+        <div style={cb}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: "#333", margin: "0 0 10px" }}>快速導出</h3>
+          <div style={{ display: "grid", gap: 6 }}>
+            {[
+              { label: "客戶列表", url: "/api/v1/system/export/customers" },
+              { label: "產品列表", url: "/api/v1/system/export/products" },
+              { label: "供應商列表", url: "/api/v1/system/export/suppliers" },
+              { label: "員工列表", url: "/api/v1/system/export/employees" },
+              { label: "庫存列表", url: "/api/v1/system/export/inventory" },
+            ].map(item => (
+              <a key={item.label} href={item.url}
+                style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", background: "#fafafa", borderRadius: 4, textDecoration: "none", color: "#333", fontSize: 13, border: "1px solid #f0f0f0" }}>
+                <span>{item.label}</span>
+                <span style={{ color: "#1890ff", fontSize: 11 }}>下載 CSV ↓</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ====== Main Page ======
+export default function SystemPage() {
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState("params");
+
+  // ====== System Params ======
+  const [params, setParams] = useState<any[]>([]);
+  const [paramsLoading, setParamsLoading] = useState(false);
+  const [editParam, setEditParam] = useState<any>(null);
+  const [editValue, setEditValue] = useState("");
+  const [paramSaving, setParamSaving] = useState(false);
+
+  const fetchParams = useCallback(() => { setParamsLoading(true); api.get("/system/params").then((r: any) => setParams(r.data || [])).finally(() => setParamsLoading(false)); }, []);
+  useEffect(() => { if (activeTab === "params") fetchParams(); }, [activeTab, fetchParams]);
+
+  const openEditParam = (p: any) => { setEditParam(p); setEditValue(typeof p.param_value === "object" ? JSON.stringify(p.param_value) : String(p.param_value ?? "")); };
+  const saveParam = async () => { setParamSaving(true); try { await api.put("/system/params/" + editParam.param_key, { value: editValue }); setEditParam(null); fetchParams(); } catch(e:any){ alert(e?.response?.data?.message||"儲存失敗"); } finally { setParamSaving(false); } };
+
+  // ====== Roles ======
+  const [roles, setRoles] = useState<any[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(false);
+  const [editRole, setEditRole] = useState<any>(null);
+  const [roleForm, setRoleForm] = useState<any>({});
+  const [rolePerms, setRolePerms] = useState<any[]>([]);
+  const [rolePermIds, setRolePermIds] = useState<string[]>([]);
+  const [roleSaving, setRoleSaving] = useState(false);
+
+  const fetchRoles = useCallback(() => { setRolesLoading(true); api.get("/system/roles").then((r: any) => setRoles(r.data || [])).finally(() => setRolesLoading(false)); }, []);
+  useEffect(() => { if (activeTab === "roles") fetchRoles(); }, [activeTab, fetchRoles]);
+
+  const openRoleEdit = async (role: any) => {
+    setEditRole(role); setRoleForm({ role_name: role.role_name, description: role.description || "", is_active: role.is_active });
+    try { const r = await api.get("/system/roles/" + role.role_id + "/permissions"); setRolePerms(r.data || []); setRolePermIds((r.data || []).filter((p:any)=>p.assigned).map((p:any)=>p.permission_id)); } catch {}
+  };
+
+  const saveRole = async () => {
+    setRoleSaving(true);
+    try {
+      await api.put("/system/roles/" + editRole.role_id, roleForm);
+      await api.put("/system/roles/" + editRole.role_id + "/permissions", { permission_ids: rolePermIds });
+      setEditRole(null); fetchRoles();
+    } catch(e:any){ alert(e?.response?.data?.message||"儲存失敗"); }
+    finally { setRoleSaving(false); }
+  };
+
+  // ====== Users ======
+  const [users, setUsers] = useState<any[]>([]);
+  const [userPagination, setUserPagination] = useState<any>({});
+  const [userPage, setUserPage] = useState(1);
+  const [userSearch, setUserSearch] = useState("");
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [userForm, setUserForm] = useState({ employee_no: "", full_name: "", role_code: "SALES", region_code: "", email: "", phone: "", password: "123456" });
+  const [userSaving, setUserSaving] = useState(false);
+
+  const fetchUsers = useCallback(() => { setUsersLoading(true); api.get("/system/users", { params: { page: userPage, page_size: 20, search: userSearch } }).then((r: any) => { setUsers(r.data?.items || []); setUserPagination(r.data?.pagination || {}); }).finally(() => setUsersLoading(false)); }, [userPage, userSearch]);
+  useEffect(() => { if (activeTab === "users") fetchUsers(); }, [activeTab, userPage, userSearch, fetchUsers]);
+
+  const addUser = async () => {
+    if (!userForm.employee_no || !userForm.full_name) { alert("請填寫員工編號和姓名"); return; }
+    setUserSaving(true);
+    try { await api.post("/system/users", userForm); setShowAddUser(false); setUserForm({ employee_no: "", full_name: "", role_code: "SALES", region_code: "", email: "", phone: "", password: "123456" }); fetchUsers(); } catch(e:any){ alert(e?.response?.data?.message||"新增失敗"); }
+    finally { setUserSaving(false); }
+  };
+
+  // ====== Audit Logs ======
+  const [logs, setLogs] = useState<any[]>([]);
+  const [logPage, setLogPage] = useState(1);
+  const [logPagination, setLogPagination] = useState<any>({});
+  const [logsLoading, setLogsLoading] = useState(false);
+
+  const fetchLogs = useCallback(() => { setLogsLoading(true); api.get("/system/audit-logs", { params: { page: logPage, page_size: 50 } }).then((r: any) => { setLogs(r.data?.items || []); setLogPagination(r.data?.pagination || {}); }).finally(() => setLogsLoading(false)); }, [logPage]);
+  useEffect(() => { if (activeTab === "audit") fetchLogs(); }, [activeTab, logPage, fetchLogs]);
+
+  const [devices, setDevices] = useState<any[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(false);
+  const fetchDevices = useCallback(() => { setDevicesLoading(true); api.get("/system/devices").then((r: any) => setDevices(r.data?.items || [])).finally(() => setDevicesLoading(false)); }, []);
+
+
+  // ====== Account Applications ======
+  const [applications, setApplications] = useState<any[]>([]);
+  const [appsLoading, setAppsLoading] = useState(false);
+  const [appsPage, setAppsPage] = useState(1);
+  const [appsPagination, setAppsPagination] = useState<any>({});
+  const [appsFilter, setAppsFilter] = useState("PENDING");
+
+  const fetchApplications = useCallback(() => {
+    setAppsLoading(true);
+    api.get("/system/account-applications", { params: { page: appsPage, page_size: 20, status: appsFilter } })
+      .then((r: any) => { setApplications(r.items || []); setAppsPagination(r.pagination || {}); })
+      .finally(() => setAppsLoading(false));
+  }, [appsPage, appsFilter]);
+  useEffect(() => { if (activeTab === "applications") fetchApplications(); }, [activeTab, appsPage, appsFilter, fetchApplications]);
+
+  const reviewApplication = async (appId: string, action: "APPROVED" | "REJECTED") => {
+    const comment = action === "REJECTED" ? prompt("請輸入拒絕原因：") : "";
+    if (action === "REJECTED" && comment === null) return;
+    try {
+      const r: any = await api.put("/system/account-applications/" + appId, { action, review_comment: comment || undefined });
+      alert(r.message || (action === "APPROVED" ? "已開通帳號" : "已拒絕申請"));
+      fetchApplications();
+    } catch (e: any) { alert(e?.response?.data?.message || "操作失敗"); }
+  };
+
+  // ====== Company Info ======
+  const [company, setCompany] = useState<any>(null);
+  const [companyLoading, setCompanyLoading] = useState(false);
+  const [editCompany, setEditCompany] = useState(false);
+  const [companyForm, setCompanyForm] = useState<any>({});
+  const [companySaving, setCompanySaving] = useState(false);${$newline}  const [printTemplates, setPrintTemplates] = useState<any[]>([]);${$newline}  const [printLoading, setPrintLoading] = useState(false);${$newline}  const [showPrintModal, setShowPrintModal] = useState(false);${$newline}  const [printForm, setPrintForm] = useState({ template_code: "", template_name: "", entity_type: "SALES_ORDER", html_content: "", paper_size: "A4", is_active: true, remark: "" });${$newline}  const [printSaving, setPrintSaving] = useState(false);
+
+  const fetchCompany = useCallback(() => {
+    setCompanyLoading(true);
+    api.get("/companies").then((r: any) => {
+      const list = r.data || [];
+      if (list.length > 0) { setCompany(list[0]); setCompanyForm(list[0]); }
+    }).finally(() => setCompanyLoading(false));
+  }, []);
+  useEffect(() => { if (activeTab === "company") fetchCompany(); }, [activeTab, fetchCompany]);
+
+  const saveCompany = async () => {
+    if (!companyForm.company_name?.trim()) { alert("請填寫公司名稱"); return; }
+    setCompanySaving(true);
+    try {
+      await api.put("/companies/" + company.company_id, companyForm);
+      alert("公司資訊已更新");
+      setEditCompany(false);
+      fetchCompany();
+    } catch (e: any) { alert(e?.response?.data?.message || "儲存失敗"); }
+    finally { setCompanySaving(false); }
+  };
+  useEffect(() => { if (activeTab === "devices") fetchDevices(); }, [activeTab, fetchDevices]);
+  useEffect(() => { if (activeTab === "company") fetchCompany(); }, [activeTab, fetchCompany]);
+
+  const unbindDevice = async (deviceId: string) => {
+    const reason = prompt("請輸入解綁原因：");
+    if (!reason) return;
+    try { await api.delete("/system/devices/" + deviceId, { data: { reason } }); fetchDevices(); } catch(e:any){ alert(e?.response?.data?.message||"解綁失敗"); }
+  };
+
+  return (
+    <DashboardLayout>
+      <div style={{ padding: "24px 28px", background: "#f5f7fa", minHeight: "100vh" }}>
+        <h2 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 600, color: "#1a1a2e" }}>系統設置</h2>
+        <p style={{ margin: "0 0 20px", fontSize: 13, color: "#999" }}>參數配置、角色權限、使用者管理、審計日誌與設備管理</p>
+
+        {/* Tabs */}
+        <div style={{ display: "flex", gap: 0, marginBottom: 20 }}>
+          {tabs.map(t => (
+            <button key={t.key} onClick={() => setActiveTab(t.key)}
+              style={{ height: 36, padding: "0 18px", fontSize: 13, fontWeight: activeTab === t.key ? 600 : 400,
+                border: "none", cursor: "pointer", borderRadius: "4px 4px 0 0",
+                background: activeTab === t.key ? "#fff" : "transparent",
+                color: activeTab === t.key ? "#1890ff" : "#666",
+                borderBottom: activeTab === t.key ? "2px solid #1890ff" : "2px solid transparent", }}>{t.label}</button>
+          ))}
+        </div>
+
+        {/* ====== 系統參數 ====== */}
+        {activeTab === "params" && (
+          <div>
+            {paramsLoading ? <div style={{ textAlign: "center", padding: 60, color: "#999" }}>載入中...</div> : (
+              <div style={cb}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr><th style={th}>參數鍵</th><th style={th}>當前值</th><th style={th}>類型</th><th style={th}>說明</th><th style={th}>操作</th></tr></thead>
+                  <tbody>
+                    {params.map((p: any, i: number) => (
+                      <tr key={p.param_key} style={{ background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                        <td style={{ ...td, fontWeight: 500, fontFamily: "monospace", fontSize: 12 }}>{p.param_key}</td>
+                        <td style={{ ...td, fontWeight: 600 }}>{typeof p.param_value === "object" ? JSON.stringify(p.param_value) : String(p.param_value ?? "")}</td>
+                        <td style={td}><span style={ts("#e6f7ff", "#1890ff")}>{p.param_type}</span></td>
+                        <td style={{ ...td, color: "#888", fontSize: 12 }}>{p.description || "-"}</td>
+                        <td style={td}><button onClick={() => openEditParam(p)} style={{ ...actionBtn, color: "#1890ff", borderColor: "#1890ff" }}>編輯</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ====== 角色管理 ====== */}
+        {activeTab === "roles" && (
+          <div>
+            {rolesLoading ? <div style={{ textAlign: "center", padding: 60, color: "#999" }}>載入中...</div> : (
+              <div style={cb}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr><th style={th}>角色代碼</th><th style={th}>角色名稱</th><th style={th}>描述</th><th style={th}>權限數</th><th style={th}>人數</th><th style={th}>狀態</th><th style={th}>操作</th></tr></thead>
+                  <tbody>
+                    {roles.map((r: any, i: number) => (
+                      <tr key={r.role_id} style={{ background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                        <td style={{ ...td, fontWeight: 500, fontFamily: "monospace" }}>{r.role_code}</td>
+                        <td style={td}>{r.role_name}</td>
+                        <td style={{ ...td, color: "#888", fontSize: 12, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.description || "-"}</td>
+                        <td style={td}>{r.permission_count || 0}</td>
+                        <td style={td}>{r.user_count || 0} 人</td>
+                        <td style={td}>{r.is_active ? <span style={ts("#f6ffed", "#52c41a")}>啟用</span> : <span style={ts("#f0f0f0", "#999")}>停用</span>}</td>
+                        <td style={td}><button onClick={() => openRoleEdit(r)} style={{ ...actionBtn, color: "#1890ff", borderColor: "#1890ff" }}>編輯</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ====== 使用者管理 ====== */}
+        {activeTab === "users" && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+              <input style={{ ...si, width: 280 }} placeholder="搜尋員工編號/姓名/Email..." value={userSearch} onChange={e => { setUserSearch(e.target.value); setUserPage(1); }} />
+              <button onClick={() => setShowAddUser(true)} style={bp}>+ 新增使用者</button>
+            </div>
+            {usersLoading ? <div style={{ textAlign: "center", padding: 60, color: "#999" }}>載入中...</div> : users.length === 0 ? <div style={{ textAlign: "center", padding: 60, color: "#999" }}>尚無使用者</div> : (
+              <div style={cb}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr><th style={th}>員工編號</th><th style={th}>姓名</th><th style={th}>角色</th><th style={th}>區域</th><th style={th}>Email</th><th style={th}>設備數</th><th style={th}>最後登入</th><th style={th}>狀態</th></tr></thead>
+                  <tbody>
+                    {users.map((u: any, i: number) => (
+                      <tr key={u.employee_id} style={{ background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                        <td style={{ ...td, fontWeight: 500 }}>{u.employee_no}</td>
+                        <td style={td}>{u.full_name}</td>
+                        <td style={td}><span style={ts("#e6f7ff", "#1890ff")}>{u.role_code}</span></td>
+                        <td style={td}>{u.region_code || "-"}</td>
+                        <td style={{ ...td, fontSize: 12 }}>{u.email || "-"}</td>
+                        <td style={td}>{u.device_count || 0}</td>
+                        <td style={{ ...td, fontSize: 12, color: "#888" }}>{u.last_login_at ? u.last_login_at.slice(0, 16).replace("T", " ") : "從未登入"}</td>
+                        <td style={td}>{u.is_active ? <span style={ts("#f6ffed", "#52c41a")}>啟用</span> : <span style={ts("#fff1f0", "#ff4d4f")}>停用</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{ padding: "10px 16px", borderTop: "1px solid #f0f0f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: "#999" }}>共 {userPagination.total} 筆</span>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button disabled={userPage <= 1} onClick={() => setUserPage(userPage - 1)} style={{ ...actionBtn, opacity: userPage <= 1 ? 0.4 : 1 }}>上一頁</button>
+                    <button disabled={userPage >= (userPagination.total_pages || 1)} onClick={() => setUserPage(userPage + 1)} style={{ ...actionBtn, opacity: userPage >= (userPagination.total_pages || 1) ? 0.4 : 1 }}>下一頁</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ====== 審計日誌 ====== */}
+        {activeTab === "audit" && (
+          <div>
+            {logsLoading ? <div style={{ textAlign: "center", padding: 60, color: "#999" }}>載入中...</div> : logs.length === 0 ? <div style={{ textAlign: "center", padding: 60, color: "#999" }}>尚無審計記錄</div> : (
+              <div style={cb}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr><th style={th}>時間</th><th style={th}>使用者</th><th style={th}>操作</th><th style={th}>對象類型</th><th style={th}>詳情</th></tr></thead>
+                  <tbody>
+                    {logs.map((l: any, i: number) => (
+                      <tr key={l.log_id} style={{ background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                        <td style={{ ...td, fontSize: 12, whiteSpace: "nowrap" }}>{l.created_at ? l.created_at.slice(0, 19).replace("T", " ") : "-"}</td>
+                        <td style={{ ...td, fontSize: 12 }}>{l.user_name || l.user_id ? l.user_id?.slice(0, 8) : "-"}</td>
+                        <td style={td}><span style={ts("#fff7e6", "#fa8c16")}>{l.action}</span></td>
+                        <td style={{ ...td, fontSize: 12 }}>{l.entity_type || "-"}</td>
+                        <td style={{ ...td, fontSize: 11, color: "#888", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {l.old_value ? "變更前: " + JSON.stringify(l.old_value).slice(0, 60) + "..." : ""}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{ padding: "10px 16px", borderTop: "1px solid #f0f0f0", display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 12, color: "#999" }}>共 {logPagination.total} 筆</span>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button disabled={logPage <= 1} onClick={() => setLogPage(logPage - 1)} style={{ ...actionBtn, opacity: logPage <= 1 ? 0.4 : 1 }}>上一頁</button>
+                    <button disabled={logPage >= (logPagination.total_pages || 1)} onClick={() => setLogPage(logPage + 1)} style={{ ...actionBtn, opacity: logPage >= (logPagination.total_pages || 1) ? 0.4 : 1 }}>下一頁</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ====== 組織架構 ====== */}
+{activeTab === "org" && (
+  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: 40 }}>
+    <div style={{ fontSize: 48, marginBottom: 16 }}>🏢</div>
+    <h3 style={{ fontSize: 16, fontWeight: 600, color: "#333", margin: "0 0 8px" }}>組織架構管理</h3>
+    <p style={{ fontSize: 13, color: "#999", margin: "0 0 20px", textAlign: "center" }}>管理部門結構、員工資料與角色權限</p>
+    <button onClick={() => router.push("/organization")} style={{ height: 36, padding: "0 24px", borderRadius: 4, border: "none", background: "#1890ff", color: "#fff", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>進入組織架構</button>
+  </div>
+)}
+
+{/* ====== 公司資訊 ====== */}
+{activeTab === "company" && (
+  <div>
+    {companyLoading ? <div style={{ textAlign: "center", padding: 60, color: "#999" }}>載入中...</div> : !company ? <div style={{ textAlign: "center", padding: 60, color: "#999" }}>尚無公司資料</div> : (
+      <div style={{ display: "grid", gap: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div />
+          {editCompany ? (
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => { setEditCompany(false); setCompanyForm(company); }} style={{ height: 32, padding: "0 14px", borderRadius: 4, border: "1px solid #d9d9d9", background: "#fff", color: "#666", fontSize: 13, cursor: "pointer" }}>取消</button>
+              <button onClick={saveCompany} disabled={companySaving} style={{ height: 32, padding: "0 14px", borderRadius: 4, border: "none", background: "#1890ff", color: "#fff", fontSize: 13, cursor: "pointer", opacity: companySaving ? 0.6 : 1 }}>{companySaving ? "儲存中..." : "儲存"}</button>
+            </div>
+          ) : (
+            <button onClick={() => setEditCompany(true)} style={{ height: 32, padding: "0 14px", borderRadius: 4, border: "1px solid #1890ff", background: "#fff", color: "#1890ff", fontSize: 13, cursor: "pointer" }}>編輯</button>
+          )}
+        </div>
+
+        {/* Basic Info */}
+        <div style={{ background: "#fff", borderRadius: 6, boxShadow: "0 1px 2px rgba(0,0,0,0.04)", overflow: "hidden" }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: "#333", padding: "12px 16px", borderBottom: "1px solid #f0f0f0", margin: 0 }}>基本資訊</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 0 }}>
+            {[["公司編碼","company_code"],["公司全名","company_name"],["公司簡稱","short_name"],["統一編號","tax_id"],["公司地址","address"],["公司電話","phone"],["公司Email","email"],["傳真","fax"],["網站","website"],["醫療器材許可證號","medical_permit_no"],["藥品許可證號","pharma_permit_no"],["GMP認證號","gmp_cert_no"],["銀行名稱","bank_name"],["銀行帳號","bank_account"],["帳戶名稱","bank_account_name"],["發票抬頭","invoice_title"],["備註","remark"]].map(([label,field]) => (
+              <div key={field} style={{ padding: "10px 16px", borderBottom: "1px solid #f5f5f5" }}>
+                <div style={{ fontSize: 11, color: "#999", marginBottom: 2 }}>{label}</div>
+                {editCompany ? (
+                  field === "remark" ? <textarea style={{ width: "100%", height: 60, padding: "6px 10px", borderRadius: 4, border: "1px solid #d9d9d9", fontSize: 13, resize: "vertical", boxSizing: "border-box" }} value={companyForm[field] || ""} onChange={e => setCompanyForm({...companyForm, [field]: e.target.value})} /> :
+                  <input style={{ width: "100%", height: 32, padding: "0 10px", borderRadius: 4, border: "1px solid #d9d9d9", fontSize: 13, boxSizing: "border-box" }} value={companyForm[field] || ""} onChange={e => setCompanyForm({...companyForm, [field]: e.target.value})} />
+                ) : <div style={{ fontSize: 14, color: "#333" }}>{company[field] || "-"}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Contact Info */}
+        <div style={{ background: "#fff", borderRadius: 6, boxShadow: "0 1px 2px rgba(0,0,0,0.04)", overflow: "hidden" }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: "#333", padding: "12px 16px", borderBottom: "1px solid #f0f0f0", margin: 0 }}>聯絡資訊</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 0 }}>
+            {[["電話","phone"],["傳真","fax"],["Email","email"],["官網","website"],["地址","address"]].map(([label,field]) => (
+              <div key={field} style={{ padding: "10px 16px", borderBottom: "1px solid #f5f5f5" }}>
+                <div style={{ fontSize: 11, color: "#999", marginBottom: 2 }}>{label}</div>
+                {editCompany ? (
+                  <input style={{ width: "100%", height: 32, padding: "0 10px", borderRadius: 4, border: "1px solid #d9d9d9", fontSize: 13, boxSizing: "border-box" }} value={companyForm[field] || ""} onChange={e => setCompanyForm({...companyForm, [field]: e.target.value})} />
+                ) : <div style={{ fontSize: 14, color: "#333" }}>{company[field] || "-"}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Permits */}
+        <div style={{ background: "#fff", borderRadius: 6, boxShadow: "0 1px 2px rgba(0,0,0,0.04)", overflow: "hidden" }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: "#333", padding: "12px 16px", borderBottom: "1px solid #f0f0f0", margin: 0 }}>醫療器材證照</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 0 }}>
+            {[["醫療器材許可證","medical_permit_no"],["藥商許可執照","pharma_permit_no"],["GMP/ISO 認證","gmp_cert_no"]].map(([label,field]) => (
+              <div key={field} style={{ padding: "10px 16px", borderBottom: "1px solid #f5f5f5" }}>
+                <div style={{ fontSize: 11, color: "#999", marginBottom: 2 }}>{label}</div>
+                {editCompany ? (
+                  <input style={{ width: "100%", height: 32, padding: "0 10px", borderRadius: 4, border: "1px solid #d9d9d9", fontSize: 13, boxSizing: "border-box" }} value={companyForm[field] || ""} onChange={e => setCompanyForm({...companyForm, [field]: e.target.value})} />
+                ) : <div style={{ fontSize: 14, color: "#333" }}>{company[field] || "-"}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Bank Info */}
+        <div style={{ background: "#fff", borderRadius: 6, boxShadow: "0 1px 2px rgba(0,0,0,0.04)", overflow: "hidden" }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: "#333", padding: "12px 16px", borderBottom: "1px solid #f0f0f0", margin: 0 }}>銀行資訊（打印表單用）</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 0 }}>
+            {[["銀行名稱","bank_name"],["銀行帳號","bank_account"],["帳戶戶名","bank_account_name"]].map(([label,field]) => (
+              <div key={field} style={{ padding: "10px 16px", borderBottom: "1px solid #f5f5f5" }}>
+                <div style={{ fontSize: 11, color: "#999", marginBottom: 2 }}>{label}</div>
+                {editCompany ? (
+                  <input style={{ width: "100%", height: 32, padding: "0 10px", borderRadius: 4, border: "1px solid #d9d9d9", fontSize: 13, boxSizing: "border-box" }} value={companyForm[field] || ""} onChange={e => setCompanyForm({...companyForm, [field]: e.target.value})} />
+                ) : <div style={{ fontSize: 14, color: "#333" }}>{company[field] || "-"}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
+)}
+
+{/* ====== 資料匯入 ====== */}
+{activeTab === "imports" && <ImportSection />}
+
+
+{/* ====== 帳號申請審批 ====== */}
+{activeTab === "applications" && (
+  <div>
+    <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+      {["PENDING", "APPROVED", "REJECTED"].map(s => (
+        <button key={s} onClick={() => { setAppsFilter(s); setAppsPage(1); }}
+          style={{ height: 32, padding: "0 16px", borderRadius: 4, border: appsFilter === s ? "2px solid #1890ff" : "1px solid #d9d9d9",
+            background: appsFilter === s ? "#e6f7ff" : "#fff", color: appsFilter === s ? "#1890ff" : "#666", fontSize: 13, cursor: "pointer" }}>
+          {s === "PENDING" ? "待審批" : s === "APPROVED" ? "已開通" : "已拒絕"}
+        </button>
+      ))}
+    </div>
+    {appsLoading ? <div style={{ textAlign: "center", padding: 60, color: "#999" }}>載入中...</div> : applications.length === 0 ? (
+      <div style={{ textAlign: "center", padding: 60, color: "#999" }}>尚無申請記錄</div>
+    ) : (
+      <div style={cb}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr>
+            <th style={th}>申請人</th><th style={th}>Email</th><th style={th}>電話</th><th style={th}>公司/機構</th><th style={th}>部門</th>
+            <th style={th}>申請原因</th><th style={th}>狀態</th><th style={th}>申請時間</th><th style={th}>操作</th>
+          </tr></thead>
+          <tbody>
+            {applications.map((a: any, i: number) => (
+              <tr key={a.application_id} style={{ background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                <td style={td}>{a.applicant_name}</td>
+                <td style={td}>{a.applicant_email}</td>
+                <td style={td}>{a.applicant_phone || "-"}</td>
+                <td style={td}>{a.company_name || "-"}</td>
+                <td style={td}>{a.department || "-"}</td>
+                <td style={{ ...td, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.reason || "-"}</td>
+                <td style={td}>
+                  {a.status === "PENDING" ? <span style={ts("#fff7e6", "#fa8c16")}>待審批</span> :
+                   a.status === "APPROVED" ? <span style={ts("#f6ffed", "#52c41a")}>已開通</span> :
+                   <span style={ts("#fff1f0", "#ff4d4f")}>已拒絕</span>}
+                </td>
+                <td style={{ ...td, fontSize: 12, color: "#888" }}>{a.created_at ? a.created_at.slice(0, 16).replace("T", " ") : "-"}</td>
+                <td style={td}>
+                  {a.status === "PENDING" ? (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => reviewApplication(a.application_id, "APPROVED")} style={{ ...actionBtn, color: "#52c41a", borderColor: "#52c41a" }}>開通</button>
+                      <button onClick={() => reviewApplication(a.application_id, "REJECTED")} style={{ ...actionBtn, color: "#ff4d4f", borderColor: "#ff4d4f" }}>拒絕</button>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: 12, color: "#999" }}>
+                      {a.review_comment ? `原因: ${a.review_comment}` : "-"}
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {appsPagination.total > 20 && (
+          <div style={{ padding: "10px 16px", borderTop: "1px solid #f0f0f0", display: "flex", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 12, color: "#999" }}>共 {appsPagination.total} 筆</span>
+            <div style={{ display: "flex", gap: 4 }}>
+              <button disabled={appsPage <= 1} onClick={() => setAppsPage(appsPage - 1)} style={{ ...actionBtn, opacity: appsPage <= 1 ? 0.4 : 1 }}>上一頁</button>
+              <button disabled={appsPage >= (appsPagination.total_pages || 1)} onClick={() => setAppsPage(appsPage + 1)} style={{ ...actionBtn, opacity: appsPage >= (appsPagination.total_pages || 1) ? 0.4 : 1 }}>下一頁</button>
+            </div>
+          </div>
+        )}
+      </div>
+    )}
+  </div>
+)}
+
+{/* ====== 設備綁定 ====== */}
+        {activeTab === "devices" && (
+          <div>
+            {devicesLoading ? <div style={{ textAlign: "center", padding: 60, color: "#999" }}>載入中...</div> : devices.length === 0 ? <div style={{ textAlign: "center", padding: 60, color: "#999" }}>尚無設備綁定記錄</div> : (
+              <div style={cb}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr><th style={th}>員工</th><th style={th}>設備ID</th><th style={th}>設備型號</th><th style={th}>OS</th><th style={th}>綁定IP</th><th style={th}>綁定時間</th><th style={th}>操作</th></tr></thead>
+                  <tbody>
+                    {devices.map((d: any, i: number) => (
+                      <tr key={d.device_id} style={{ background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                        <td style={td}>{d.employee_no} {d.full_name}</td>
+                        <td style={{ ...td, fontFamily: "monospace", fontSize: 11 }}>{d.device_id ? d.device_id.slice(0, 12) + "..." : "-"}</td>
+                        <td style={td}>{d.device_model || "-"}</td>
+                        <td style={td}>{d.os_version || "-"}</td>
+                        <td style={td}>{d.bind_ip || "-"}</td>
+                        <td style={{ ...td, fontSize: 12 }}>{d.created_at ? d.created_at.slice(0, 16).replace("T", " ") : "-"}</td>
+                        <td style={td}><button onClick={() => unbindDevice(d.device_id)} style={{ ...actionBtn, color: "#ff4d4f", borderColor: "#ff4d4f" }}>強制解綁</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ====== Edit Param Modal ====== */}
+        {editParam && (
+          <div style={modalBg} onClick={e => { if (e.target === e.currentTarget) setEditParam(null); }}>
+            <div style={{ ...modalCard, width: 480 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 600, color: "#333", margin: "0 0 20px" }}>編輯參數：{editParam.param_key}</h3>
+              <div style={{ marginBottom: 12 }}>
+                <div style={sl}>類型：{editParam.param_type}</div>
+                <div style={{ fontSize: 12, color: "#888", marginBottom: 12 }}>{editParam.description}</div>
+              </div>
+              <div style={sl}>參數值</div>
+              {editParam.param_type === "BOOLEAN" ? (
+                <select style={si} value={editValue} onChange={e => setEditValue(e.target.value)}>
+                  <option value="true">true</option>
+                  <option value="false">false</option>
+                </select>
+              ) : (
+                <input style={si} value={editValue} onChange={e => setEditValue(e.target.value)} />
+              )}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
+                <button onClick={() => setEditParam(null)} style={{ height: 36, padding: "0 20px", borderRadius: 4, border: "1px solid #d9d9d9", background: "#fff", color: "#666", fontSize: 14, cursor: "pointer" }}>取消</button>
+                <button onClick={saveParam} disabled={paramSaving} style={{ ...bp, opacity: paramSaving ? 0.6 : 1 }}>{paramSaving ? "儲存中..." : "儲存"}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ====== Edit Role Modal ====== */}
+        {editRole && (
+          <div style={modalBg} onClick={e => { if (e.target === e.currentTarget) setEditRole(null); }}>
+            <div style={modalCard}>
+              <h3 style={{ fontSize: 16, fontWeight: 600, color: "#333", margin: "0 0 20px" }}>編輯角色：{editRole.role_code}</h3>
+              <div style={{ display: "grid", gap: 16, marginBottom: 20 }}>
+                <div>
+                  <div style={sl}>角色名稱</div>
+                  <input style={si} value={roleForm.role_name || ""} onChange={e => setRoleForm({ ...roleForm, role_name: e.target.value })} />
+                </div>
+                <div>
+                  <div style={sl}>描述</div>
+                  <input style={si} value={roleForm.description || ""} onChange={e => setRoleForm({ ...roleForm, description: e.target.value })} />
+                </div>
+                <div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13 }}>
+                    <input type="checkbox" checked={roleForm.is_active} onChange={e => setRoleForm({ ...roleForm, is_active: e.target.checked })} />
+                    啟用
+                  </label>
+                </div>
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#555", marginBottom: 8 }}>權限綁定</div>
+                <div style={{ maxHeight: 300, overflow: "auto", border: "1px solid #f0f0f0", borderRadius: 4, padding: 12 }}>
+                  {(() => {
+                    const groups: Record<string, any[]> = {};
+                    rolePerms.forEach((p: any) => { const g = p.resource_type; if (!groups[g]) groups[g] = []; groups[g].push(p); });
+                    return Object.entries(groups).map(([group, perms]) => (
+                      <div key={group} style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#888", marginBottom: 4, textTransform: "uppercase" }}>{group}</div>
+                        {perms.map((p: any) => (
+                          <label key={p.permission_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", cursor: "pointer", fontSize: 13 }}>
+                            <input type="checkbox" checked={rolePermIds.includes(p.permission_id)} onChange={e => {
+                              if (e.target.checked) setRolePermIds([...rolePermIds, p.permission_id]);
+                              else setRolePermIds(rolePermIds.filter(id => id !== p.permission_id));
+                            }} />
+                            <span style={{ fontFamily: "monospace", fontSize: 11, color: "#999", width: 140 }}>{p.permission_code}</span>
+                            <span>{p.permission_name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    ));
+                  })()}
+                </div>
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button onClick={() => setEditRole(null)} style={{ height: 36, padding: "0 20px", borderRadius: 4, border: "1px solid #d9d9d9", background: "#fff", color: "#666", fontSize: 14, cursor: "pointer" }}>取消</button>
+                <button onClick={saveRole} disabled={roleSaving} style={{ ...bp, opacity: roleSaving ? 0.6 : 1 }}>{roleSaving ? "儲存中..." : "儲存"}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ====== Add User Modal ====== */}
+        {showAddUser && (
+          <div style={modalBg} onClick={e => { if (e.target === e.currentTarget) setShowAddUser(false); }}>
+            <div style={modalCard}>
+              <h3 style={{ fontSize: 16, fontWeight: 600, color: "#333", margin: "0 0 20px" }}>新增使用者</h3>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div>
+                  <div style={sl}>員工編號 <span style={{ color: "#ff4d4f" }}>*</span></div>
+                  <input style={si} value={userForm.employee_no} onChange={e => setUserForm({ ...userForm, employee_no: e.target.value })} placeholder="例如: SALES001" />
+                </div>
+                <div>
+                  <div style={sl}>姓名 <span style={{ color: "#ff4d4f" }}>*</span></div>
+                  <input style={si} value={userForm.full_name} onChange={e => setUserForm({ ...userForm, full_name: e.target.value })} />
+                </div>
+                <div>
+                  <div style={sl}>角色</div>
+                  <select style={si} value={userForm.role_code} onChange={e => setUserForm({ ...userForm, role_code: e.target.value })}>
+                    {roles.map((r: any) => <option key={r.role_id} value={r.role_code}>{r.role_name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={sl}>區域</div>
+                  <select style={si} value={userForm.region_code} onChange={e => setUserForm({ ...userForm, region_code: e.target.value })}>
+                    <option value="">不限</option>
+                    <option value="NORTH">北區</option><option value="CENTRAL">中區</option>
+                    <option value="SOUTH">南區</option><option value="EAST">東區</option>
+                  </select>
+                </div>
+                <div>
+                  <div style={sl}>Email</div>
+                  <input style={si} value={userForm.email} onChange={e => setUserForm({ ...userForm, email: e.target.value })} />
+                </div>
+                <div>
+                  <div style={sl}>電話</div>
+                  <input style={si} value={userForm.phone} onChange={e => setUserForm({ ...userForm, phone: e.target.value })} />
+                </div>
+                <div>
+                  <div style={sl}>密碼</div>
+                  <input style={si} type="text" value={userForm.password} onChange={e => setUserForm({ ...userForm, password: e.target.value })} />
+                </div>
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
+                <button onClick={() => setShowAddUser(false)} style={{ height: 36, padding: "0 20px", borderRadius: 4, border: "1px solid #d9d9d9", background: "#fff", color: "#666", fontSize: 14, cursor: "pointer" }}>取消</button>
+                <button onClick={addUser} disabled={userSaving} style={{ ...bp, opacity: userSaving ? 0.6 : 1 }}>{userSaving ? "處理中..." : "新增"}</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </DashboardLayout>
+  );
+}

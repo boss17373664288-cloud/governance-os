@@ -1,0 +1,1 @@
+﻿UPDATE customer_master SET customer_name = N'台大医院' WHERE customer_id = '8f5e4b41-4b96-4a17-bcfc-2a49721e9fd2';

@@ -1,0 +1,12 @@
+DO $$ BEGIN ALTER TABLE employee_master ADD COLUMN IF NOT EXISTS display_name VARCHAR(50); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE employee_master ADD COLUMN IF NOT EXISTS mobile VARCHAR(20); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE employee_master ADD COLUMN IF NOT EXISTS job_title VARCHAR(50); EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE employee_master ADD COLUMN IF NOT EXISTS permission_version INT DEFAULT 1; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE employee_master ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE employee_master ADD COLUMN IF NOT EXISTS last_login_ip INET; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE employee_master ADD COLUMN IF NOT EXISTS created_by UUID; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE employee_master ADD COLUMN IF NOT EXISTS updated_by UUID; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE employee_master ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'ACTIVE'; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+CREATE TABLE IF NOT EXISTS delegation (delegation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),delegator_id UUID NOT NULL,delegate_id UUID NOT NULL,role_code VARCHAR(50) NOT NULL,scope_type VARCHAR(20),scope_value VARCHAR(100),start_date TIMESTAMPTZ NOT NULL,end_date TIMESTAMPTZ NOT NULL,status VARCHAR(20) DEFAULT 'ACTIVE',reason TEXT,granted_by UUID,created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS department (department_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),department_code VARCHAR(20) NOT NULL UNIQUE,department_name VARCHAR(100) NOT NULL,department_type VARCHAR(20) NOT NULL,parent_department_id UUID REFERENCES department(department_id),company_id UUID NOT NULL REFERENCES company(company_id),sort_order INT DEFAULT 0,is_active BOOLEAN DEFAULT TRUE,created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,deleted_at TIMESTAMPTZ);
+CREATE TABLE IF NOT EXISTS employee_position (employee_id UUID REFERENCES employee_master(employee_id) ON DELETE CASCADE,position_code VARCHAR(50) NOT NULL,is_primary BOOLEAN DEFAULT FALSE,start_date DATE,end_date DATE,created_by UUID,created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY (employee_id, position_code));
