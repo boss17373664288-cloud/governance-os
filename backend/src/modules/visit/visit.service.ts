@@ -5,6 +5,17 @@ import { EventEmitter2 } from "@nestjs/event-emitter";
 import { CreateVisitDto, ScheduleVisitDto, CheckinDto } from "./dto/visit.dto";
 import { v4 as uuidv4 } from "uuid";
 
+// Haversine distance in meters
+function haversineDistance(lat1, lng1, lat2, lng2) {
+  var R = 6371000;
+  var dLat = (lat2 - lat1) * Math.PI / 180;
+  var dLng = (lng2 - lng1) * Math.PI / 180;
+  var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+var LOCATION_THRESHOLD_METERS = 500;
+
 @Injectable()
 export class VisitService {
   private readonly logger = new Logger(VisitService.name);
@@ -75,13 +86,21 @@ export class VisitService {
   }
 
   async createRecord(dto: CreateVisitDto, userId: string) {
+    const visitDate = dto.visit_date || new Date().toISOString().slice(0, 10);
+    const visitPurpose = dto.visit_purpose || dto.visit_type || "ROUTINE";
     const nextDate = (dto as any).next_followup_date || null;
     const saved = await this.em.query(
-      "INSERT INTO visit (visit_id, customer_id, visit_date, visit_type, visit_purpose, result_code, notes, next_action, next_followup_date, employee_id, status, checkin_time) VALUES ($1,$2,$3::date,$4,$5,$6,$7,$8,$9,$10,$11,NOW()) RETURNING *",
-      [uuidv4(), dto.customer_id, dto.visit_date, dto.visit_type, dto.visit_purpose, dto.result_code || null, dto.notes || null, dto.next_action || null, nextDate, userId, "COMPLETED"]
+      "INSERT INTO visit (visit_id, customer_id, visit_date, visit_type, visit_purpose, result_code, notes, next_action, next_followup_date, employee_id, status, checkin_time, checkin_gps_lat, checkin_gps_lng) VALUES ($1,$2,$3::date,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),$12,$13) RETURNING *",
+      [uuidv4(), dto.customer_id, visitDate, dto.visit_type, visitPurpose, dto.result_code || null, dto.notes || null, dto.next_action || null, nextDate, userId, "COMPLETED", (dto as any).gps_latitude || null, (dto as any).gps_longitude || null]
     );
+    var cust = await this.em.query("SELECT latitude, longitude, company_address FROM customer_master WHERE customer_id = $1", [dto.customer_id]);
+    var distanceInfo: any = null;
+    if (cust.length > 0 && cust[0].latitude && cust[0].longitude && (dto as any).gps_latitude) {
+      var dist = haversineDistance((dto as any).gps_latitude, (dto as any).gps_longitude, Number(cust[0].latitude), Number(cust[0].longitude));
+      distanceInfo = { distance_meters: Math.round(dist), within_range: dist <= LOCATION_THRESHOLD_METERS, customer_address: cust[0].company_address };
+    }
     this.eventEmitter.emit("visit.completed", { ...saved[0], userId });
     this.logger.log("Visit record created for customer: " + dto.customer_id);
-    return saved[0];
+    return { ...saved[0], distance_info: distanceInfo };
   }
 }

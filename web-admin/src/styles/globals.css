@@ -1,3 +1,4 @@
-﻿/* 全域樣式 - 與 preview.html 完全一致 */
+﻿@import "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
+/* 全域樣式 - 與 preview.html 完全一致 */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: #f0f2f5; }

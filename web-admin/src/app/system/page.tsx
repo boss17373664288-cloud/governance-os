@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -20,6 +20,58 @@ const actionBtn: React.CSSProperties = { height: 28, padding: "0 10px", borderRa
   const ACTION_MAP: Record<string, string> = { "SYSTEM_PARAM_UPDATE": "系統參數更新", "DEVICE_UNBIND": "設備解綁", "DEVICE_SELF_UNBIND": "自行解綁設備", "PASSWORD_CHANGE": "密碼變更", "IMPORT": "資料匯入", "CREATE_WORKFLOW": "建立審批流程", "UPDATE_WORKFLOW": "更新審批流程", "DELETE_WORKFLOW": "刪除審批流程", "CREATE_FIELD_POLICY": "建立欄位權限", "UPDATE_FIELD_POLICY": "更新欄位權限", "DELETE_FIELD_POLICY": "刪除欄位權限", "LOGIN": "登入", "LOGOUT": "登出" };
 
   const ENTITY_MAP: Record<string, string> = { "system_param": "系統參數", "device_binding": "設備綁定", "employee_master": "員工", "customer_master": "客戶", "product_master": "產品", "order_master": "訂單", "workflow_definition": "審批流程", "field_policy": "欄位權限", "inventory": "庫存", "supplier_master": "供應商", "sample_order": "樣品/打版", "consignment": "寄庫", "budget": "預算", "recall": "召回" };
+const FIELD_OPTIONS: Record<string, { value: string; label: string }[]> = {
+  customer: [
+    { value: "customer_code", label: "客戶編碼" }, { value: "customer_name", label: "客戶名稱" }, { value: "short_name", label: "客戶簡稱" },
+    { value: "customer_type", label: "客戶類型" }, { value: "customer_source", label: "客戶來源" }, { value: "industry_type", label: "行業類型" },
+    { value: "tax_id", label: "統一編號" }, { value: "owning_employee_id", label: "負責業務" },
+    { value: "contract_signed", label: "合約已簽" }, { value: "allow_transaction", label: "允許交易" },
+    { value: "contact_person", label: "聯絡人" }, { value: "phone", label: "電話" }, { value: "email", label: "Email" },
+    { value: "address", label: "公司地址" }, { value: "company_zip", label: "公司郵遞" }, { value: "website", label: "公司網址" },
+    { value: "shipping_address", label: "送貨地址" }, { value: "shipping_zip", label: "送貨郵遞" }, { value: "recipient_name", label: "收貨人" }, { value: "recipient_phone", label: "收貨人電話" },
+    { value: "billing_address", label: "發票地址" }, { value: "billing_zip", label: "發票郵遞" }, { value: "billing_recipient", label: "收票人" }, { value: "billing_recipient_phone", label: "收票人電話" },
+    { value: "contact_phone_1", label: "聯絡人電話1" }, { value: "contact_phone_2", label: "聯絡人電話2" }, { value: "contact_phone_3", label: "聯絡人電話3" },
+    { value: "payment_terms", label: "付款條件" }, { value: "credit_limit", label: "信用額度" }, { value: "outstanding_ar", label: "應收帳款" },
+    { value: "bank_name", label: "公司銀行" }, { value: "bank_account", label: "銀行帳號" }, { value: "account_name", label: "抬頭/戶名" },
+    { value: "invoice_tax_id", label: "開票統編" }, { value: "invoice_note", label: "開票備註" },
+    { value: "institution_code", label: "醫事機構代碼" }, { value: "latitude", label: "緯度" }, { value: "longitude", label: "經度" },
+  ],
+  product: [
+    { value: "product_code", label: "產品編碼" }, { value: "product_name", label: "產品名稱" }, { value: "product_specification", label: "產品規格" },
+    { value: "category", label: "產品類別" }, { value: "brand_series_id", label: "品牌系列" },
+    { value: "base_price", label: "基本售價" }, { value: "minimum_price", label: "最低售價" }, { value: "cost_price", label: "成本價" },
+    { value: "unit", label: "單位" }, { value: "min_stock_qty", label: "安全庫存" },
+  ],
+  supplier: [
+    { value: "supplier_code", label: "供應商編碼" }, { value: "supplier_name", label: "供應商名稱" },
+    { value: "contact_person", label: "聯絡人" }, { value: "phone", label: "電話" }, { value: "email", label: "Email" }, { value: "address", label: "地址" },
+    { value: "tax_id", label: "統一編號" }, { value: "payment_terms", label: "付款條件" },
+  ],
+  sales_order: [
+    { value: "order_no", label: "訂單編號" }, { value: "customer_id", label: "客戶" }, { value: "order_date", label: "訂單日期" },
+    { value: "total_amount", label: "訂單總額" }, { value: "status", label: "狀態" },
+  ],
+  purchase_order: [
+    { value: "po_no", label: "採購單號" }, { value: "supplier_id", label: "供應商" },
+    { value: "total_amount", label: "總金額" }, { value: "status", label: "狀態" },
+  ],
+  inventory: [
+    { value: "warehouse_id", label: "倉庫" }, { value: "product_id", label: "產品" },
+    { value: "batch_no", label: "批號" }, { value: "quantity", label: "庫存數量" }, { value: "expiry_date", label: "效期" },
+  ],
+  consignment: [
+    { value: "customer_id", label: "客戶" }, { value: "product_id", label: "產品" }, { value: "remaining_qty", label: "剩餘數量" },
+  ],
+  employee: [
+    { value: "employee_no", label: "員工編號" }, { value: "full_name", label: "姓名" }, { value: "email", label: "Email" },
+    { value: "phone", label: "電話" }, { value: "department_id", label: "部門" }, { value: "position", label: "職位" },
+    { value: "birth_date", label: "出生年月日" }, { value: "salary", label: "薪資" },
+  ],
+  recall: [{ value: "case_no", label: "召回單號" }, { value: "status", label: "狀態" }, { value: "product_id", label: "產品" }],
+  sample: [{ value: "request_no", label: "打板單號" }, { value: "status", label: "狀態" }],
+  visit: [{ value: "customer_id", label: "客戶" }, { value: "visit_date", label: "拜訪日期" }, { value: "notes", label: "備註" }],
+  finance: [{ value: "ar_no", label: "應收單號" }, { value: "amount", label: "金額" }, { value: "status", label: "狀態" }],
+};
 
   const formatAuditDetail = (l: any) => {
     const entityName = ENTITY_MAP[l.entity_type] || l.entity_type || "";
@@ -948,7 +1000,7 @@ export default function SystemPage() {
         </div>
         <div>
           <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>欄位名稱 *</div>
-          <input style={{ width: "100%", height: 36, padding: "0 12px", borderRadius: 4, border: "1px solid #d9d9d9", fontSize: 13, outline: "none", boxSizing: "border-box" }} value={fpForm.field_name} onChange={e => setFpForm({...fpForm, field_name: e.target.value})} placeholder="例如: cost_price, mobile_phone" />
+          <select style={{ width: "100%", height: 36, borderRadius: 4, border: "1px solid #d9d9d9", fontSize: 13, padding: "0 8px", background: "#fff", outline: "none" }} value={fpForm.field_name} onChange={e => setFpForm({...fpForm, field_name: e.target.value})}><option value="">請選擇欄位</option>{(FIELD_OPTIONS[fpForm.entity_type] || []).map(f => <option key={f.value} value={f.value}>{f.label} ({f.value})</option>)}</select>
         </div>
         <div>
           <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>存取等級</div>
@@ -1455,3 +1507,4 @@ export default function SystemPage() {
     </DashboardLayout>
   );
 }
+

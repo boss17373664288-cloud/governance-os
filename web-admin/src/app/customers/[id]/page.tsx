@@ -4,6 +4,9 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import DashboardLayout from "../../../components/layout/DashboardLayout";
 import { api } from "../../../lib/api";
+
+import dynamic from "next/dynamic";
+const MapPicker = dynamic(() => import("@/components/MapPicker"), { ssr: false });
 import EnumManager from "../../../components/EnumManager";
 
 type Customer = any;
@@ -254,7 +257,8 @@ export default function CustomerDetailPage() {
                       <div><div style={fl}>發票地址</div>{editMode?<input style={inputS} value={billingAddress} onChange={e=>setBillingAddress(e.target.value)}/>:<div style={fv}>{billingAddress||"-"}</div>}</div>
                       <div><div style={fl}>收票人</div>{editMode?<input style={inputS} value={billingRecipient} onChange={e=>setBillingRecipient(e.target.value)}/>:<div style={fv}>{billingRecipient||"-"}</div>}</div>
                       <div><div style={fl}>收票人電話</div>{editMode?<input style={inputS} value={billingRecipientPhone} onChange={e=>setBillingRecipientPhone(e.target.value)}/>:<div style={fv}>{billingRecipientPhone||"-"}</div>}</div>
-                    </div>
+                    
+                {editMode && (<div style={{gridColumn: "1 / -1"}}><div style={{...cb, marginBottom: 16}}><h3 style={{fontSize:14,fontWeight:600,color:"#333",padding:"12px 16px",borderBottom:"1px solid #f0f0f0",margin:0}}>GPS 座標 (地圖選點)</h3><div style={{padding:16}}><MapPicker lat={editForm.latitude} lng={editForm.longitude} address={editForm.company_address} autoLocateAddress={editForm.company_address} onChange={(lat,lng)=>{setEditForm({...editForm,latitude:lat,longitude:lng})}}/><div style={{display:"flex",gap:16,marginTop:12}}><div style={{flex:1}}><div style={fl}>緯度 Latitude</div><input style={inputS} value={editForm.latitude||""} onChange={e=>setEditForm({...editForm,latitude:parseFloat(e.target.value)||undefined})} placeholder="25.034"/></div><div style={{flex:1}}><div style={fl}>經度 Longitude</div><input style={inputS} value={editForm.longitude||""} onChange={e=>setEditForm({...editForm,longitude:parseFloat(e.target.value)||undefined})} placeholder="121.565"/></div></div></div></div></div>)}</div>
                   </div>
                 </div>
                 <div style={{ ...cb, marginBottom: 16 }}>

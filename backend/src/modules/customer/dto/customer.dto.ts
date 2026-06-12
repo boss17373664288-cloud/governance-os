@@ -48,6 +48,8 @@ export class CreateCustomerDto {
 }
 
 export class UpdateCustomerDto {
+  @IsOptional() @IsNumber() latitude?: number;
+  @IsOptional() @IsNumber() longitude?: number;
   @IsOptional() @IsString() old_erp_customer_code?: string;
   @IsOptional() @IsString() customer_name?: string;
   @IsOptional() @IsString() customer_short_name?: string;

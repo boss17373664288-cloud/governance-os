@@ -1,7 +1,12 @@
 ﻿import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_BASE = 'http://10.0.2.2:3000/api/v1'; // Android emulator
+import { Platform } from 'react-native';
+
+// Android 模擬器用 10.0.2.2，實機/iOS 用 localhost，生產環境用 Railway
+const DEV_API = Platform.OS === 'android' ? 'http://10.0.2.2:3000/api/v1' : 'http://localhost:3000/api/v1';
+const PROD_API = 'https://backend-production.up.railway.app/api/v1';
+const API_BASE = __DEV__ ? DEV_API : PROD_API;
 
 export const api = axios.create({ baseURL: API_BASE, timeout: 15000 });
 

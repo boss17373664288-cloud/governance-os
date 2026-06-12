@@ -1,0 +1,16 @@
+﻿[build]
+  builder = "nixpacks"
+  buildCommand = "npm install && npm run build"
+
+[deploy]
+  startCommand = "npm run start"
+  healthcheckPath = "/login"
+  restartPolicyType = "ON_FAILURE"
+
+[trainyard]
+  [trainyard.environments]
+    [trainyard.environments.production]
+      [trainyard.environments.production.variables]
+        NODE_ENV = "production"
+        PORT = "3000"
+        NEXT_PUBLIC_API_URL = "https://backend-production.up.railway.app"

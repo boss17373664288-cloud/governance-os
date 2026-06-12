@@ -58,6 +58,7 @@ const STATUS_MAP: Record<string, { label: string; bg: string; color: string }> =
 export default function VisitsPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"schedule" | "records" | "today">("schedule");
+  const [showAddVisitModal, setShowAddVisitModal] = useState(false);
   const [visits, setVisits] = useState<any[]>([]);
   const [todayVisits, setTodayVisits] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
@@ -269,6 +270,7 @@ export default function VisitsPage() {
         {/* Tab: Today */}
         {activeTab === "today" && (
           <div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}><button onClick={() => setShowAddVisitModal(true)} style={{ height: 36, padding: "0 20px", borderRadius: 4, border: "none", background: "#1890ff", color: "#fff", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>+ 新增拜訪</button></div>
             {todayVisits.length === 0 ? <div style={{ ...cardBox, textAlign: "center", padding: 40, color: "#999" }}>今日尚無行程</div> : todayVisits.map((v: any) => (
               <div key={v.visit_id} style={{ ...cardBox, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
@@ -370,6 +372,61 @@ export default function VisitsPage() {
           </div>
         )}
       </div>
-    </DashboardLayout>
+    
+      {/* Add Visit Modal */}
+      {showAddVisitModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div style={{ background: "#fff", borderRadius: 8, padding: 24, width: 520, maxHeight: "80vh", overflow: "auto" }}>
+            <h3 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 16px" }}>新增拜訪</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>客戶 <span style={{ color: "#ff4d4f" }}>*</span></div>
+                <div style={{ position: "relative" }}>
+                  <input style={si} placeholder="選擇客戶..." value={recForm.customer_id ? (customers.find(c => c.customer_id === recForm.customer_id)?.customer_name || "") : ""}
+                    onChange={e => { setRecForm({ ...recForm, customer_id: "" }); }}
+                    onFocus={() => setShowCustDropdown(true)} />
+                  {showCustDropdown && (
+                    <div style={{ position: "absolute", top: 38, left: 0, right: 0, background: "#fff", border: "1px solid #e5e6eb", borderRadius: 4, maxHeight: 200, overflow: "auto", zIndex: 10, boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}>
+                      <div onMouseDown={() => { setRecForm({ ...recForm, customer_id: "" }); setShowCustDropdown(false); }} style={{ padding: "6px 12px", cursor: "pointer", fontSize: 13, color: "#999", borderBottom: "1px solid #f5f5f5" }}>清除選擇</div>
+                      {customers.filter((c: any) => c.customer_name.includes(recForm.customer_id ? "" : "")).map((c: any) => (
+                        <div key={c.customer_id} onMouseDown={() => { setRecForm({ ...recForm, customer_id: c.customer_id }); setShowCustDropdown(false); }}
+                          style={{ padding: "8px 12px", cursor: "pointer", fontSize: 13, borderBottom: "1px solid #f5f5f5" }}
+                          onMouseEnter={e => (e.currentTarget.style.background = "#f0f5ff")} onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                          {c.customer_name} ({c.customer_code})
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>拜訪類型</div>
+                <select style={ss} value={recForm.visit_type} onChange={e => setRecForm({ ...recForm, visit_type: e.target.value })}>
+                  <option value="">選擇類型</option>
+                  {VISIT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>備註</div>
+                <textarea style={{ ...si, height: 80, resize: "vertical" }} value={recForm.notes || ""} onChange={e => setRecForm({ ...recForm, notes: e.target.value })} />
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
+              <button onClick={() => setShowAddVisitModal(false)} style={{ height: 36, padding: "0 20px", borderRadius: 4, border: "1px solid #d9d9d9", background: "#fff", color: "#666", fontSize: 14, cursor: "pointer" }}>取消</button>
+              <button onClick={async () => {
+                if (!recForm.customer_id) { alert("請選擇客戶"); return; }
+                setSaving(true);
+                try {
+                  await api.post("/visits/records", { customer_id: recForm.customer_id, visit_type: recForm.visit_type || "ROUTINE", notes: recForm.notes });
+                  setShowAddVisitModal(false);
+                  fetchPlanned(); fetchToday(); fetchRecords();
+                } catch (e: any) { alert(e?.response?.data?.message || "操作失敗"); }
+                setSaving(false);
+              }} disabled={saving} style={{ ...bp, opacity: saving ? 0.6 : 1 }}>{saving ? "建立中..." : "確認新增"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+        </DashboardLayout>
   );
 }

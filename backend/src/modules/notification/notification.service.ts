@@ -298,4 +298,85 @@ export class NotificationService implements OnModuleInit {
       entity_id: event.entityId,
     });
   }
-}
+
+  // ============================================================
+  // 寄庫審批事件監聽
+  // ============================================================
+
+  /** 寄庫出庫提交審批 → 通知 QA */
+  @OnEvent("consignment.release_submitted")
+  async onConsignmentReleaseSubmitted(event: any) {
+    await this.sendToRole(["QA", "QA_SUPERVISOR", "ADMIN"], {
+      notification_type: "APPROVAL",
+      title: "待審批：寄庫出庫 " + (event.release_no || event.entityId),
+      body: "寄庫出庫單 " + (event.release_no || "") + " 已提交，數量：" + (event.quantity || "") + "，請QA品保放行。",
+      link_url: "/consignment",
+      entity_type: "CONSIGNMENT_RELEASE",
+      entity_id: event.entityId,
+    });
+  }
+
+  /** 寄庫出庫 QA 放行 → 通知倉管 */
+  @OnEvent("consignment.release_qa_approved")
+  async onConsignmentReleaseQaApproved(event: any) {
+    await this.sendToRole(["WAREHOUSE", "ADMIN"], {
+      notification_type: "APPROVAL",
+      title: "待出貨：寄庫出庫 " + (event.release_no || event.entityId),
+      body: "寄庫出庫單 " + (event.release_no || "") + " 已通過QA放行，請倉管確認出貨。",
+      link_url: "/consignment",
+      entity_type: "CONSIGNMENT_RELEASE",
+      entity_id: event.entityId,
+    });
+  }
+
+  /** 寄庫出庫完成 → 通知業務 */
+  @OnEvent("consignment.release_shipped")
+  async onConsignmentReleaseShipped(event: any) {
+    await this.sendToRole(["SALES", "ADMIN"], {
+      notification_type: "APPROVAL",
+      title: "已出貨：寄庫出庫 " + (event.release_no || event.entityId),
+      body: "寄庫出庫單 " + (event.release_no || "") + " 已完成出貨。",
+      link_url: "/consignment",
+      entity_type: "CONSIGNMENT_RELEASE",
+      entity_id: event.entityId,
+    });
+  }
+
+  /** 寄庫換貨提交審批 → 通知 QA */
+  @OnEvent("consignment.exchange_submitted")
+  async onConsignmentExchangeSubmitted(event: any) {
+    await this.sendToRole(["QA", "QA_SUPERVISOR", "ADMIN"], {
+      notification_type: "APPROVAL",
+      title: "待審批：寄庫換貨 " + (event.exchange_no || event.entityId),
+      body: "寄庫換貨單 " + (event.exchange_no || "") + " 已提交，數量：" + (event.quantity || "") + "，請QA品保放行。",
+      link_url: "/consignment",
+      entity_type: "CONSIGNMENT_EXCHANGE",
+      entity_id: event.entityId,
+    });
+  }
+
+  /** 寄庫換貨 QA 放行 → 通知倉管 */
+  @OnEvent("consignment.exchange_qa_approved")
+  async onConsignmentExchangeQaApproved(event: any) {
+    await this.sendToRole(["WAREHOUSE", "ADMIN"], {
+      notification_type: "APPROVAL",
+      title: "待出貨：寄庫換貨 " + (event.exchange_no || event.entityId),
+      body: "寄庫換貨單 " + (event.exchange_no || "") + " 已通過QA放行，請倉管確認出貨。",
+      link_url: "/consignment",
+      entity_type: "CONSIGNMENT_EXCHANGE",
+      entity_id: event.entityId,
+    });
+  }
+
+  /** 寄庫換貨完成 → 通知業務 */
+  @OnEvent("consignment.exchange_shipped")
+  async onConsignmentExchangeShipped(event: any) {
+    await this.sendToRole(["SALES", "ADMIN"], {
+      notification_type: "APPROVAL",
+      title: "已出貨：寄庫換貨 " + (event.exchange_no || event.entityId),
+      body: "寄庫換貨單 " + (event.exchange_no || "") + " 已完成換貨出貨。",
+      link_url: "/consignment",
+      entity_type: "CONSIGNMENT_EXCHANGE",
+      entity_id: event.entityId,
+    });
+  }}

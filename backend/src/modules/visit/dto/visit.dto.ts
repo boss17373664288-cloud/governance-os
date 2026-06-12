@@ -1,10 +1,12 @@
-import { IsString, IsNotEmpty, IsUUID, IsOptional, IsNumber, IsBoolean } from 'class-validator';
+﻿import { IsString, IsNotEmpty, IsUUID, IsOptional, IsNumber, IsBoolean } from 'class-validator';
 
 export class CreateVisitDto {
+  @IsOptional() @IsNumber() gps_latitude?: number;
+  @IsOptional() @IsNumber() gps_longitude?: number;
   @IsUUID() @IsNotEmpty() customer_id: string;
-  @IsString() @IsNotEmpty() visit_date: string;
+  @IsOptional() @IsString() visit_date?: string;
   @IsString() @IsNotEmpty() visit_type: string;
-  @IsString() @IsNotEmpty() visit_purpose: string;
+  @IsOptional() @IsString() visit_purpose?: string;
   @IsOptional() @IsString() result_code?: string;
   @IsOptional() @IsString() notes?: string;
   @IsOptional() @IsString() next_action?: string;
@@ -22,3 +24,4 @@ export class CheckinDto {
   @IsNumber() gps_latitude: number;
   @IsNumber() gps_longitude: number;
 }
+

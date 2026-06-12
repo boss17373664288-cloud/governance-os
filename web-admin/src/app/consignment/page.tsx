@@ -15,13 +15,23 @@ const si: React.CSSProperties = { width: "100%", height: 36, padding: "0 12px", 
 const sl: React.CSSProperties = { fontSize: 12, fontWeight: 500, color: "#888", marginBottom: 4 };
 const modalBg: React.CSSProperties = { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 };
 const modalCard: React.CSSProperties = { background: "#fff", borderRadius: 8, padding: 24, width: 560, maxHeight: "80vh", overflow: "auto", boxShadow: "0 4px 12px rgba(0,0,0,0.15)" };
+const btnSm: React.CSSProperties = { height: 26, padding: "0 10px", borderRadius: 3, border: "1px solid #d9d9d9", background: "#fff", color: "#666", fontSize: 11, cursor: "pointer" };
+const tabBtn = (active: boolean): React.CSSProperties => ({ padding: "8px 20px", fontSize: 13, fontWeight: active ? 600 : 400, color: active ? "#1890ff" : "#666", background: active ? "#fff" : "transparent", border: "none", borderBottom: active ? "2px solid #1890ff" : "2px solid transparent", cursor: "pointer" });
+
+const STATUS_MAP: Record<string, { label: string; bg: string; color: string }> = {
+  PENDING_QA: { label: "待QA審批", bg: "#fff7e6", color: "#fa8c16" },
+  QA_APPROVED: { label: "QA已放行", bg: "#f6ffed", color: "#52c41a" },
+  SHIPPED: { label: "已出貨", bg: "#e6f7ff", color: "#1890ff" },
+  COMPLETED: { label: "已結案", bg: "#f0f0f0", color: "#888" },
+  REJECTED: { label: "已駁回", bg: "#fff1f0", color: "#ff4d4f" },
+};
 
 export default function ConsignmentPage() {
   const [ledger, setLedger] = useState<any[]>([]);
   const [staleAlert, setStaleAlert] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [activeTab, setActiveTab] = useState<"ledger" | "stale">("ledger");
+  const [activeTab, setActiveTab] = useState<"ledger" | "stale" | "approval">("ledger");
 
   // Release modal
   const [showRelease, setShowRelease] = useState(false);
@@ -40,6 +50,11 @@ export default function ConsignmentPage() {
   const [allProducts, setAllProducts] = useState<any[]>([]);
   const [excSaving, setExcSaving] = useState(false);
 
+  // Approval tab
+  const [releases, setReleases] = useState<any[]>([]);
+  const [exchanges, setExchanges] = useState<any[]>([]);
+  const [approvalLoading, setApprovalLoading] = useState(false);
+
   const fetchData = useCallback(() => {
     setLoading(true);
     Promise.all([api.get("/consignment/ledger"), api.get("/consignment/stale-alert")])
@@ -47,12 +62,29 @@ export default function ConsignmentPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  const fetchApprovals = useCallback(() => {
+    setApprovalLoading(true);
+    Promise.all([api.get("/consignment/releases"), api.get("/consignment/exchanges")])
+      .then(([r, e]: any[]) => { setReleases(r.data || r || []); setExchanges(e.data || e || []); })
+      .finally(() => setApprovalLoading(false));
+  }, []);
 
-  // Load customers for modals
+  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { if (activeTab === "approval") fetchApprovals(); }, [activeTab, fetchApprovals]);
+
   const loadCustomers = async () => {
-    const c = await api.get("/customers", { params: { page_size: 200 } });
-    return c.data.items || [];
+    const c = await api.get("/consignment/ledger");
+    const ledgerData = c.data || [];
+    const seen = new Set();
+    return ledgerData.filter((row: any) => {
+      if (seen.has(row.customer_id)) return false;
+      seen.add(row.customer_id);
+      return true;
+    }).map((row: any) => ({
+      customer_id: row.customer_id,
+      customer_name: row.customer_name,
+      customer_code: row.customer_code
+    }));
   };
 
   // ====== Release Modal ======
@@ -76,9 +108,10 @@ export default function ConsignmentPage() {
     if (!relForm.customer_id || !relForm.product_id || relForm.quantity < 1) { alert("請填寫完整資料"); return; }
     setRelSaving(true);
     try {
-      await api.post("/consignment/release", relForm);
-      alert("寄庫出庫成功"); setShowRelease(false); fetchData();
-    } catch (e: any) { alert(e?.response?.data?.message || "出庫失敗"); }
+      const r = await api.post("/consignment/release", relForm);
+      alert(r.data?.message || "寄庫出庫申請已建立，等待QA審批");
+      setShowRelease(false); fetchData();
+    } catch (e: any) { alert(e?.response?.data?.message || "申請失敗"); }
     finally { setRelSaving(false); }
   };
 
@@ -86,8 +119,9 @@ export default function ConsignmentPage() {
   const openExchange = async () => {
     const customers = await loadCustomers();
     setExcCustomers(customers);
-    const p = await api.get("/products", { params: { page_size: 500 } });
-    setAllProducts(p.data.items || []);
+    const allP = await api.get("/products");
+    const products = allP.data?.items || allP.data || [];
+    setAllProducts(products);
     setExcForm({ customer_id: "", source_product_id: "", target_product_id: "", quantity: 1, reason: "" });
     setExcSrcProducts([]);
     setShowExchange(true);
@@ -98,135 +132,209 @@ export default function ConsignmentPage() {
       api.get("/consignment/ledger", { params: { customer_id: excForm.customer_id } }).then((r: any) => {
         setExcSrcProducts(r.data || []);
       });
-    } else { setExcSrcProducts([]); setExcForm(prev => ({ ...prev, source_product_id: "" })); }
+    } else { setExcSrcProducts([]); setExcForm(prev => ({ ...prev, source_product_id: "", target_product_id: "" })); }
   }, [excForm.customer_id]);
 
   const doExchange = async () => {
-    if (!excForm.customer_id || !excForm.source_product_id || !excForm.target_product_id || excForm.quantity < 1 || !excForm.reason) {
-      alert("請填寫完整資料"); return;
-    }
-    if (excForm.source_product_id === excForm.target_product_id) { alert("來源產品與目標產品不可相同"); return; }
+    if (!excForm.customer_id || !excForm.source_product_id || !excForm.target_product_id || excForm.quantity < 1 || !excForm.reason) { alert("請填寫完整資料"); return; }
     setExcSaving(true);
     try {
-      await api.post("/consignment/exchange", excForm);
-      alert("寄庫換貨成功"); setShowExchange(false); fetchData();
+      const r = await api.post("/consignment/exchange", excForm);
+      alert(r.data?.message || "寄庫換貨申請已建立，等待QA審批");
+      setShowExchange(false); fetchData();
     } catch (e: any) { alert(e?.response?.data?.message || "換貨失敗"); }
     finally { setExcSaving(false); }
   };
 
-  const filtered = (activeTab === "ledger" ? ledger : staleAlert).filter((r: any) => {
+  // ====== Approval Actions ======
+  const qaApproveRelease = async (id: string) => {
+    try { await api.put("/consignment/release/" + id + "/qa-approve"); alert("QA已放行"); fetchApprovals(); } catch (e: any) { alert(e?.response?.data?.message || "操作失敗"); }
+  };
+  const rejectRelease = async (id: string) => {
+    try { await api.put("/consignment/release/" + id + "/reject"); alert("已駁回"); fetchApprovals(); } catch (e: any) { alert(e?.response?.data?.message || "操作失敗"); }
+  };
+  const shipRelease = async (id: string) => {
+    try { await api.put("/consignment/release/" + id + "/ship"); alert("已出貨完成"); fetchApprovals(); fetchData(); } catch (e: any) { alert(e?.response?.data?.message || "操作失敗"); }
+  };
+  const qaApproveExchange = async (id: string) => {
+    try { await api.put("/consignment/exchange/" + id + "/qa-approve"); alert("QA已放行"); fetchApprovals(); } catch (e: any) { alert(e?.response?.data?.message || "操作失敗"); }
+  };
+  const rejectExchange = async (id: string) => {
+    try { await api.put("/consignment/exchange/" + id + "/reject"); alert("已駁回"); fetchApprovals(); } catch (e: any) { alert(e?.response?.data?.message || "操作失敗"); }
+  };
+  const shipExchange = async (id: string) => {
+    try { await api.put("/consignment/exchange/" + id + "/ship"); alert("已換貨出貨完成"); fetchApprovals(); fetchData(); } catch (e: any) { alert(e?.response?.data?.message || "操作失敗"); }
+  };
+
+  const filteredLedger = ledger.filter((row: any) => {
+    if (!search) return true;
     const s = search.toLowerCase();
-    return !s || (r.customer_code || "").toLowerCase().includes(s) || (r.customer_name || "").toLowerCase().includes(s) || (r.product_code || "").toLowerCase().includes(s) || (r.product_name || "").toLowerCase().includes(s);
+    return (row.customer_name || "").toLowerCase().includes(s) || (row.customer_code || "").toLowerCase().includes(s) || (row.product_name || "").toLowerCase().includes(s) || (row.product_code || "").toLowerCase().includes(s);
   });
 
   return (
     <DashboardLayout>
-      <div style={{ padding: "24px 28px", background: "#f5f7fa", minHeight: "100vh" }}>
-        {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "#1a1a2e" }}>寄庫管理</h2>
-            <p style={{ margin: "4px 0 0", fontSize: 13, color: "#999" }}>管理客戶寄庫台帳、出庫與換貨作業</p>
+      <div style={{ padding: "20px 24px", background: "#f5f7fa", minHeight: "100vh" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 600, color: "#1a1a2e", margin: 0 }}>寄庫管理</h2>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={openRelease} style={bp}>+ 寄庫出庫</button>
+            <button onClick={openExchange} style={bo}>+ 寄庫換貨</button>
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={openRelease} style={bg}>寄庫出庫</button>
-            <button onClick={openExchange} style={bo}>寄庫換貨出庫</button>
-          </div>
-        </div>
-
-        {/* Stats Cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
-          {[
-            { label: "活躍寄庫筆數", value: ledger.filter((l: any) => l.status === "ACTIVE").length, color: "#1890ff" },
-            { label: "呆滯預警筆數", value: staleAlert.length, color: "#fa8c16" },
-            { label: "已耗盡筆數", value: ledger.filter((l: any) => l.status === "DEPLETED").length, color: "#999" },
-            { label: "總剩餘數量", value: ledger.filter((l: any) => l.status === "ACTIVE").reduce((s: number, l: any) => s + (Number(l.remaining_qty) || 0), 0), color: "#52c41a" },
-          ].map((s, i) => (
-            <div key={i} style={{ ...cb, padding: "16px 20px", borderLeft: "3px solid " + s.color }}>
-              <div style={{ fontSize: 12, color: "#999", marginBottom: 6 }}>{s.label}</div>
-              <div style={{ fontSize: 24, fontWeight: 700, color: s.color }}>{s.value}</div>
-            </div>
-          ))}
         </div>
 
         {/* Tabs */}
-        <div style={{ display: "flex", gap: 0, marginBottom: 16 }}>
-          {[
-            { key: "ledger", label: "寄庫台帳" },
-            { key: "stale", label: "呆滯預警" },
-          ].map((t: any) => (
-            <button
-              key={t.key}
-              onClick={() => setActiveTab(t.key)}
-              style={{
-                height: 38, padding: "0 20px", fontSize: 13, fontWeight: activeTab === t.key ? 600 : 400,
-                border: "none", cursor: "pointer", borderRadius: "4px 4px 0 0",
-                background: activeTab === t.key ? "#fff" : "transparent",
-                color: activeTab === t.key ? "#1890ff" : "#666",
-                borderBottom: activeTab === t.key ? "2px solid #1890ff" : "2px solid transparent",
-              }}
-            >{t.label}{activeTab === "stale" && staleAlert.length > 0 ? ` (${staleAlert.length})` : ""}</button>
-          ))}
+        <div style={{ display: "flex", gap: 0, marginBottom: 16, borderBottom: "1px solid #e5e6eb" }}>
+          <button onClick={() => setActiveTab("ledger")} style={tabBtn(activeTab === "ledger")}>寄庫台帳</button>
+          <button onClick={() => setActiveTab("stale")} style={tabBtn(activeTab === "stale")}>呆滯預警 {staleAlert.length > 0 ? "(" + staleAlert.length + ")" : ""}</button>
+          <button onClick={() => setActiveTab("approval")} style={tabBtn(activeTab === "approval")}>審批管理</button>
         </div>
 
-        {/* Search */}
-        <div style={{ marginBottom: 16 }}>
-          <input style={{ ...si, width: 280 }} placeholder="搜尋客戶名稱/編碼/產品..." value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
-
-        {/* Table */}
-        {loading ? (
-          <div style={{ textAlign: "center", padding: 60, color: "#999" }}>載入中...</div>
-        ) : filtered.length === 0 ? (
-          <div style={{ textAlign: "center", padding: 60, color: "#999" }}>尚無資料</div>
-        ) : (
+        {/* Ledger Tab */}
+        {activeTab === "ledger" && (
           <div style={cb}>
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
+              <input style={{ ...si, width: 280 }} placeholder="搜尋客戶/產品..." value={search} onChange={e => setSearch(e.target.value)} />
+            </div>
+            {loading ? <div style={{ padding: 60, textAlign: "center", color: "#999" }}>載入中...</div> : filteredLedger.length === 0 ? <div style={{ padding: 60, textAlign: "center", color: "#999" }}>尚無寄庫台帳</div> : (
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    <th style={th}>客戶編碼</th>
-                    <th style={th}>客戶名稱</th>
-                    <th style={th}>產品編碼</th>
-                    <th style={th}>產品名稱</th>
-                    <th style={th}>剩餘數量</th>
-                    <th style={th}>最後出庫日</th>
-                    <th style={th}>狀態</th>
-                    {activeTab === "stale" && <th style={th}>呆滯天數</th>}
-                  </tr>
-                </thead>
+                <thead><tr>
+                  <th style={th}>客戶編碼</th><th style={th}>客戶名稱</th><th style={th}>產品編碼</th><th style={th}>產品名稱</th>
+                  <th style={th}>剩餘數量</th><th style={th}>最近領貨日</th><th style={th}>來源訂單</th>
+                </tr></thead>
                 <tbody>
-                  {filtered.map((r: any, i: number) => (
-                    <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
-                      <td style={td}>{r.customer_code || "-"}</td>
-                      <td style={td}>{r.customer_name || "-"}</td>
-                      <td style={td}>{r.product_code || "-"}</td>
-                      <td style={td}>{r.product_name || "-"}</td>
-                      <td style={{ ...td, fontWeight: 600, color: Number(r.remaining_qty) <= 5 ? "#ff4d4f" : "#333" }}>{r.remaining_qty ?? "-"}</td>
-                      <td style={td}>{r.last_release_date || "尚未出庫"}</td>
-                      <td style={td}>
-                        <span style={r.status === "ACTIVE" ? ts("#e6f7ff", "#1890ff") : ts("#f0f0f0", "#999")}>{r.status === "ACTIVE" ? "活躍" : "已耗盡"}</span>
-                      </td>
-                      {activeTab === "stale" && <td style={{ ...td, color: "#fa8c16", fontWeight: 500 }}>{r.stale_days ? r.stale_days + " 天" : "-"}</td>}
+                  {filteredLedger.map((row: any, i: number) => (
+                    <tr key={row.ledger_id || i}>
+                      <td style={{ ...td, fontFamily: "monospace", fontSize: 12, color: "#1890ff" }}>{row.customer_code || "-"}</td>
+                      <td style={td}>{row.customer_name || "-"}</td>
+                      <td style={{ ...td, fontFamily: "monospace", fontSize: 12 }}>{row.product_code || "-"}</td>
+                      <td style={td}>{row.product_name || "-"}</td>
+                      <td style={{ ...td, fontWeight: 600 }}>{row.remaining_qty}</td>
+                      <td style={td}>{row.last_release_date ? row.last_release_date.slice(0, 10) : "-"}</td>
+                      <td style={{ ...td, fontSize: 12, color: "#888" }}>{row.source_order_no || row.source_sales_order_id ? (row.source_order_no || row.source_sales_order_id).slice(0, 16) : "-"}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div>
-            <div style={{ padding: "10px 16px", fontSize: 12, color: "#999", borderTop: "1px solid #f0f0f0" }}>共 {filtered.length} 筆</div>
+            )}
           </div>
         )}
 
-        {/* ====== Release Modal ====== */}
+        {/* Stale Alert Tab */}
+        {activeTab === "stale" && (
+          <div style={cb}>
+            {staleAlert.length === 0 ? <div style={{ padding: 60, textAlign: "center", color: "#999" }}>無呆滯預警</div> : (
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead><tr>
+                  <th style={th}>客戶</th><th style={th}>產品</th><th style={th}>剩餘數量</th>
+                  <th style={th}>建立日期</th><th style={th}>最近領貨</th>
+                </tr></thead>
+                <tbody>
+                  {staleAlert.map((row: any, i: number) => (
+                    <tr key={i}>
+                      <td style={td}>{row.customer_name} <span style={{ fontSize: 11, color: "#999" }}>({row.customer_code})</span></td>
+                      <td style={td}>{row.product_name} <span style={{ fontSize: 11, color: "#999" }}>({row.product_code})</span></td>
+                      <td style={{ ...td, fontWeight: 600, color: "#ff4d4f" }}>{row.remaining_qty}</td>
+                      <td style={td}>{row.created_at ? row.created_at.slice(0, 10) : "-"}</td>
+                      <td style={td}>{row.last_release_date ? row.last_release_date.slice(0, 10) : "從未領貨"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
+        {/* Approval Tab */}
+        {activeTab === "approval" && (
+          <div>
+            {approvalLoading ? <div style={{ padding: 60, textAlign: "center", color: "#999" }}>載入中...</div> : (
+              <>
+                {/* 寄庫出庫審批 */}
+                <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, color: "#333" }}>寄庫出庫審批</h3>
+                <div style={{ ...cb, marginBottom: 24 }}>
+                  {releases.length === 0 ? <div style={{ padding: 40, textAlign: "center", color: "#999" }}>尚無出庫申請</div> : (
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead><tr>
+                        <th style={th}>單號</th><th style={th}>客戶</th><th style={th}>產品</th>
+                        <th style={th}>數量</th><th style={th}>狀態</th><th style={th}>建立時間</th>
+                        <th style={th}>操作</th>
+                      </tr></thead>
+                      <tbody>
+                        {releases.map((r: any) => (
+                          <tr key={r.release_id}>
+                            <td style={{ ...td, fontFamily: "monospace", fontSize: 11 }}>{r.release_no}</td>
+                            <td style={td}>{r.customer_name} <span style={{ fontSize: 11, color: "#999" }}>({r.customer_code})</span></td>
+                            <td style={td}>{r.product_name} <span style={{ fontSize: 11, color: "#999" }}>({r.product_code})</span></td>
+                            <td style={{ ...td, fontWeight: 600 }}>{r.quantity}</td>
+                            <td style={td}><span style={ts(STATUS_MAP[r.status]?.bg || "#f0f0f0", STATUS_MAP[r.status]?.color || "#888")}>{STATUS_MAP[r.status]?.label || r.status}</span></td>
+                            <td style={{ ...td, fontSize: 12, color: "#888" }}>{r.created_at ? r.created_at.slice(0, 16).replace("T", " ") : "-"}</td>
+                            <td style={td}>
+                              {r.status === "PENDING_QA" && (
+                                <><button onClick={() => qaApproveRelease(r.release_id)} style={{ ...btnSm, marginRight: 4, color: "#52c41a", borderColor: "#b7eb8f" }}>QA放行</button>
+                                <button onClick={() => rejectRelease(r.release_id)} style={{ ...btnSm, color: "#ff4d4f", borderColor: "#ffccc7" }}>駁回</button></>
+                              )}
+                              {r.status === "QA_APPROVED" && (
+                                <button onClick={() => shipRelease(r.release_id)} style={{ ...btnSm, color: "#1890ff", borderColor: "#91d5ff" }}>確認出貨</button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                {/* 寄庫換貨審批 */}
+                <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, color: "#333" }}>寄庫換貨審批</h3>
+                <div style={cb}>
+                  {exchanges.length === 0 ? <div style={{ padding: 40, textAlign: "center", color: "#999" }}>尚無換貨申請</div> : (
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead><tr>
+                        <th style={th}>單號</th><th style={th}>客戶</th><th style={th}>原產品</th>
+                        <th style={th}>改出產品</th><th style={th}>數量</th><th style={th}>原因</th>
+                        <th style={th}>狀態</th><th style={th}>操作</th>
+                      </tr></thead>
+                      <tbody>
+                        {exchanges.map((e: any) => (
+                          <tr key={e.exchange_id}>
+                            <td style={{ ...td, fontFamily: "monospace", fontSize: 11 }}>{e.exchange_no}</td>
+                            <td style={td}>{e.customer_name}</td>
+                            <td style={td}>{e.source_product_name} <span style={{ fontSize: 11, color: "#999" }}>({e.source_product_code})</span></td>
+                            <td style={td}>{e.target_product_name} <span style={{ fontSize: 11, color: "#999" }}>({e.target_product_code})</span></td>
+                            <td style={{ ...td, fontWeight: 600 }}>{e.quantity}</td>
+                            <td style={{ ...td, fontSize: 12 }}>{e.reason || "-"}</td>
+                            <td style={td}><span style={ts(STATUS_MAP[e.status]?.bg || "#f0f0f0", STATUS_MAP[e.status]?.color || "#888")}>{STATUS_MAP[e.status]?.label || e.status}</span></td>
+                            <td style={td}>
+                              {e.status === "PENDING_QA" && (
+                                <><button onClick={() => qaApproveExchange(e.exchange_id)} style={{ ...btnSm, marginRight: 4, color: "#52c41a", borderColor: "#b7eb8f" }}>QA放行</button>
+                                <button onClick={() => rejectExchange(e.exchange_id)} style={{ ...btnSm, color: "#ff4d4f", borderColor: "#ffccc7" }}>駁回</button></>
+                              )}
+                              {e.status === "QA_APPROVED" && (
+                                <button onClick={() => shipExchange(e.exchange_id)} style={{ ...btnSm, color: "#1890ff", borderColor: "#91d5ff" }}>確認出貨</button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Release Modal */}
         {showRelease && (
-          <div style={modalBg} onClick={e => { if (e.target === e.currentTarget) setShowRelease(false); }}>
-            <div style={modalCard}>
-              <h3 style={{ fontSize: 16, fontWeight: 600, color: "#333", margin: "0 0 20px" }}>寄庫出庫</h3>
-              <div style={{ display: "grid", gap: 16 }}>
+          <div style={modalBg} onClick={() => setShowRelease(false)}>
+            <div style={modalCard} onClick={e => e.stopPropagation()}>
+              <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20 }}>寄庫出庫申請</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 <div>
                   <div style={sl}>客戶 <span style={{ color: "#ff4d4f" }}>*</span></div>
                   <div style={{ position: "relative" }}>
-                    <input style={si} placeholder="搜索客戶名稱/編碼..." 
+                    <input style={si} placeholder="搜索客戶名稱/編碼..."
                       value={relForm.customer_id ? (relCustomers.find(c => c.customer_id === relForm.customer_id)?.customer_name || "") : relCustSearch}
                       onChange={e => { setRelCustSearch(e.target.value); setRelForm({ ...relForm, customer_id: "" }); }}
                       onFocus={() => setRelCustSearch(relCustSearch || "")} />
@@ -239,9 +347,6 @@ export default function ConsignmentPage() {
                             <span style={{ fontSize: 11, color: "#999", marginLeft: 8 }}>{c.customer_code}</span>
                           </div>
                         ))}
-                        {relCustomers.filter(c => !relCustSearch || c.customer_name?.toLowerCase().includes(relCustSearch.toLowerCase()) || c.customer_code?.toLowerCase().includes(relCustSearch.toLowerCase())).length === 0 && (
-                          <div style={{ padding: 12, textAlign: "center", color: "#999", fontSize: 13 }}>無匹配客戶</div>
-                        )}
                       </div>
                     )}
                   </div>
@@ -254,28 +359,28 @@ export default function ConsignmentPage() {
                   </select>
                 </div>
                 <div>
-                  <div style={sl}>數量 <span style={{ color: "#ff4d4f" }}>*</span></div>
+                  <div style={sl}>出庫數量 <span style={{ color: "#ff4d4f" }}>*</span></div>
                   <input style={si} type="number" min={1} value={relForm.quantity} onChange={e => setRelForm({ ...relForm, quantity: parseInt(e.target.value) || 0 })} />
                 </div>
               </div>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
                 <button onClick={() => setShowRelease(false)} style={{ height: 36, padding: "0 20px", borderRadius: 4, border: "1px solid #d9d9d9", background: "#fff", color: "#666", fontSize: 14, cursor: "pointer" }}>取消</button>
-                <button onClick={doRelease} disabled={relSaving} style={{ ...bg, opacity: relSaving ? 0.6 : 1 }}>{relSaving ? "處理中..." : "確認出庫"}</button>
+                <button onClick={doRelease} disabled={relSaving} style={{ ...bp, opacity: relSaving ? 0.6 : 1 }}>{relSaving ? "處理中..." : "送出申請"}</button>
               </div>
             </div>
           </div>
         )}
 
-        {/* ====== Exchange Modal ====== */}
+        {/* Exchange Modal */}
         {showExchange && (
-          <div style={modalBg} onClick={e => { if (e.target === e.currentTarget) setShowExchange(false); }}>
-            <div style={modalCard}>
-              <h3 style={{ fontSize: 16, fontWeight: 600, color: "#333", margin: "0 0 20px" }}>寄庫換貨出庫</h3>
-              <div style={{ display: "grid", gap: 16 }}>
+          <div style={modalBg} onClick={() => setShowExchange(false)}>
+            <div style={modalCard} onClick={e => e.stopPropagation()}>
+              <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20 }}>寄庫換貨申請</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 <div>
                   <div style={sl}>客戶 <span style={{ color: "#ff4d4f" }}>*</span></div>
                   <div style={{ position: "relative" }}>
-                    <input style={si} placeholder="搜索客戶名稱/編碼..." 
+                    <input style={si} placeholder="搜索客戶名稱/編碼..."
                       value={excForm.customer_id ? (excCustomers.find(c => c.customer_id === excForm.customer_id)?.customer_name || "") : excCustSearch}
                       onChange={e => { setExcCustSearch(e.target.value); setExcForm({ ...excForm, customer_id: "" }); }}
                       onFocus={() => setExcCustSearch(excCustSearch || "")} />
@@ -288,9 +393,6 @@ export default function ConsignmentPage() {
                             <span style={{ fontSize: 11, color: "#999", marginLeft: 8 }}>{c.customer_code}</span>
                           </div>
                         ))}
-                        {excCustomers.filter(c => !excCustSearch || c.customer_name?.toLowerCase().includes(excCustSearch.toLowerCase()) || c.customer_code?.toLowerCase().includes(excCustSearch.toLowerCase())).length === 0 && (
-                          <div style={{ padding: 12, textAlign: "center", color: "#999", fontSize: 13 }}>無匹配客戶</div>
-                        )}
                       </div>
                     )}
                   </div>
@@ -328,7 +430,7 @@ export default function ConsignmentPage() {
               </div>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
                 <button onClick={() => setShowExchange(false)} style={{ height: 36, padding: "0 20px", borderRadius: 4, border: "1px solid #d9d9d9", background: "#fff", color: "#666", fontSize: 14, cursor: "pointer" }}>取消</button>
-                <button onClick={doExchange} disabled={excSaving} style={{ ...bo, opacity: excSaving ? 0.6 : 1 }}>{excSaving ? "處理中..." : "確認換貨"}</button>
+                <button onClick={doExchange} disabled={excSaving} style={{ ...bo, opacity: excSaving ? 0.6 : 1 }}>{excSaving ? "處理中..." : "送出申請"}</button>
               </div>
             </div>
           </div>
@@ -337,3 +439,4 @@ export default function ConsignmentPage() {
     </DashboardLayout>
   );
 }
+
