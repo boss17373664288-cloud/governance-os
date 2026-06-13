@@ -481,7 +481,7 @@ export default function SystemPage() {
   }, []);
   useEffect(() => { if (activeTab === "params") fetchParams(); }, [activeTab, fetchParams]);
   useEffect(() => {
-    if (paramSearch) setFilteredParams(params.filter((p: any) => p.param_code?.toLowerCase().includes(paramSearch.toLowerCase()) || p.param_name?.toLowerCase().includes(paramSearch.toLowerCase())));
+    if (paramSearch) setFilteredParams(params.filter((p: any) => p.param_key?.toLowerCase().includes(paramSearch.toLowerCase()) || p.description?.toLowerCase().includes(paramSearch.toLowerCase())));
     else setFilteredParams(params);
   }, [paramSearch, params]);
 
@@ -489,7 +489,7 @@ export default function SystemPage() {
     if (!paramForm.param_code) { alert("請填寫參數代碼"); return; }
     setParamSaving(true);
     try {
-      if (editingParam) await api.put("/system/params/" + editingParam.param_id, paramForm);
+      if (editingParam) await api.put("/system/params/" + editingParam.param_key, { value: paramForm.param_value });
       else await api.post("/system/params", paramForm);
       alert(editingParam ? "參數已更新" : "參數已建立");
       setShowParamModal(false);
@@ -573,13 +573,13 @@ export default function SystemPage() {
                   <tbody>
                     {filteredParams.map((p: any) => (
                       <tr key={p.param_id} style={{ background: "#fff" }}>
-                        <td style={{ ...td, fontWeight: 500, fontFamily: "monospace", fontSize: 12 }}>{p.param_code}</td>
-                        <td style={td}>{p.param_name}</td>
+                        <td style={{ ...td, fontWeight: 500, fontFamily: "monospace", fontSize: 12 }}>{p.param_key}</td>
+                        <td style={td}>{p.param_key}</td>
                         <td style={{ ...td, fontFamily: "monospace", fontSize: 12, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }}>{p.param_value}</td>
-                        <td style={td}><span style={ts("#e6f7ff", "#1890ff")}>{p.data_type}</span></td>
+                        <td style={td}><span style={ts("#e6f7ff", "#1890ff")}>{p.param_type}</span></td>
                         <td style={{ ...td, fontSize: 12, color: "#888" }}>{p.description || "-"}</td>
                         <td style={{ ...td, textAlign: "center" }}>
-                          <button onClick={() => { setEditingParam(p); setParamForm({ ...p }); setShowParamModal(true); }} style={actionBtn}>編輯</button>
+                          <button onClick={() => { setEditingParam(p); setParamForm({ param_code: p.param_key, param_name: p.param_name || p.param_key, param_value: p.param_value, data_type: p.param_type || "STRING", description: p.description || "" }); setShowParamModal(true); }} style={actionBtn}>編輯</button>
                           <button onClick={() => handleDeleteParam(p.param_id)} style={{ ...actionBtn, color: "#ff4d4f", borderColor: "#ffccc7" }}>刪除</button>
                         </td>
                       </tr>

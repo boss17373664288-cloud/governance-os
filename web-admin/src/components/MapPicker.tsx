@@ -31,17 +31,15 @@ function MapClickHandler({ onClick }: { onClick: (lat: number, lng: number) => v
 
 async function geocodeAddress(address: string): Promise<{lat: number; lng: number} | null> {
   if (!address || address.length < 3) return null;
-  // Clean address: remove floor (樓), remove specific number (號 + digits)
-  let cleaned = address.replace(/\d+號\d*樓?/g, "").replace(/\d+號?/g, "").trim();
-  if (!cleaned || cleaned.length < 2) cleaned = address;
-  // Try full address first, then cleaned version
-  const queries = [address, cleaned, cleaned + " Taiwan"];
+  const queries = [address, address + " Taiwan"];
   for (const q of queries) {
     try {
-      const res = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=3&q=" + encodeURIComponent(q));
+      const url = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?f=json&outFields=*&maxLocations=1&address=" + encodeURIComponent(q);
+      const res = await fetch(url);
       const data = await res.json();
-      if (data && data.length > 0) {
-        return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+      if (data?.candidates?.length > 0) {
+        const c = data.candidates[0];
+        return { lat: c.location.y, lng: c.location.x };
       }
     } catch {}
   }
@@ -58,11 +56,8 @@ function SearchBox({ onSelect }: { onSelect: (lat: number, lng: number, name: st
     if (query.length < 2) return;
     setSearching(true);
     try {
-      const res = await fetch(
-        "https://nominatim.openstreetmap.org/search?format=json&limit=5&q=" + encodeURIComponent(query)
-      );
-      const data = await res.json();
-      setResults(data || []);
+      const res = await fetch("https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?f=json&outFields=*&maxLocations=5&address=" + encodeURIComponent(query));
+      const data = await res.json(); setResults((data?.candidates || []).map((c: any) => ({ lat: c.location.y, lon: c.location.x, display_name: c.address })));
     } catch {
       setResults([]);
     } finally {
@@ -138,8 +133,7 @@ export default function MapPicker({ lat, lng, address, autoLocateAddress, onChan
     }
     setAutoLocating(false);
   };
-
-  useEffect(() => {
+useEffect(() => {
     if (lat && lng) setPosition([lat, lng]);
   }, [lat, lng]);
 
@@ -198,9 +192,10 @@ export default function MapPicker({ lat, lng, address, autoLocateAddress, onChan
           fontSize: 12,
           zIndex: 1000
         }}>
-          {position[0].toFixed(6)}, {position[1].toFixed(6)}
+          {Number(position[0]).toFixed(6)}, {Number(position[1]).toFixed(6)}
         </div>
       )}
     </div>
   );
 }
+

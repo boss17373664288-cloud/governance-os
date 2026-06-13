@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView, ActivityIndicator, Platform, PermissionsAndroid,
 } from 'react-native';
@@ -109,7 +109,7 @@ export default function VisitRecordScreen() {
       payload.gps_longitude = gps.lng;
       await api.post('/visits/records', payload);
 
-      Alert.alert('成功', '拜訪記錄已儲存\nGPS: ' + gps.lat.toFixed(6) + ', ' + gps.lng.toFixed(6), [
+      Alert.alert('成功', '拜訪記錄已儲存', [
         { text: '確定', onPress: () => resetForm() }
       ]);
     } catch (e: any) {

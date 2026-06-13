@@ -63,7 +63,7 @@ export default function VisitsPage() {
   const [todayVisits, setTodayVisits] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState(false); const [adminVisits, setAdminVisits] = useState<any[]>([]); const [adminThresholds, setAdminThresholds] = useState<any>({}); const [isAdmin, setIsAdmin] = useState(false);
   const [custSearch, setCustSearch] = useState("");
   const [showCustDropdown, setShowCustDropdown] = useState(false);
   const filteredCustomers = customers.filter(c => 
@@ -84,7 +84,7 @@ export default function VisitsPage() {
     api.get("/visits/today").then((r: any) => setTodayVisits(r.data || [])).catch(() => {});
   }, []);
 
-  useEffect(() => { fetchVisits(); fetchToday(); }, [fetchVisits, fetchToday]);
+  useEffect(() => { fetchVisits(); fetchToday(); try { const token = localStorage.getItem("access_token"); if (token) { const payload = JSON.parse(atob(token.split(".")[1])); if (payload.role === "ADMIN") { setIsAdmin(true); api.get("/visits/admin/all").then((r: any) => { setAdminVisits(r.data?.visits || []); setAdminThresholds(r.data?.thresholds || {}); }).catch(() => {}); } } } catch {} }, [fetchVisits, fetchToday]);
   useEffect(() => {
     api.get("/customers", { params: { page_size: 200 } }).then((r: any) => setCustomers(r.data?.items || [])).catch(() => {});
   }, []);
@@ -124,7 +124,7 @@ export default function VisitsPage() {
       }
 
       await api.post("/visits/checkin", { visit_id: visitId, gps_latitude: lat, gps_longitude: lng });
-      alert("簽到成功（" + lat.toFixed(4) + ", " + lng.toFixed(4) + "）");
+      alert("簽到成功");
       fetchToday(); fetchVisits();
     } catch (e: any) { alert(e?.response?.data?.message || "簽到失敗"); }
   };
@@ -157,6 +157,38 @@ export default function VisitsPage() {
     }}>{label}{count !== undefined ? ` (${count})` : ""}</button>;
   };
 
+  const renderAdminTable = (rows: any[]) => (
+    <div style={cb}>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr>
+            <th style={th}>日期</th><th style={th}>時間</th><th style={th}>客戶</th><th style={th}>客戶地址</th><th style={th}>打卡座標</th><th style={th}>客戶座標</th><th style={th}>距離</th><th style={th}>狀態</th>
+          </tr></thead>
+          <tbody>
+            {rows.map((v: any, i: number) => {
+              const d = v.distance_meters; const w = adminThresholds?.warning_meters || 500; const a = adminThresholds?.alert_meters || 2000;
+              const km = d !== null ? (d / 1000).toFixed(1) : null;
+              const dc = d === null ? "#999" : d <= w ? "#52c41a" : d <= a ? "#fa8c16" : "#ff4d4f";
+              const db = d === null ? "#f5f5f5" : d <= w ? "#f6ffed" : d <= a ? "#fff7e6" : "#fff1f0";
+              const dl = d === null ? "無GPS" : d <= 500 ? "✅ " + d + "m" : d <= 2000 ? "⚠️ " + km + "km" : "🔴 " + km + "km";
+              return (
+                <tr key={v.visit_id} style={{ background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                  <td style={td}>{v.visit_date ? new Date(v.visit_date).toLocaleDateString("zh-TW") : "-"}</td>
+                  <td style={td}>{v.scheduled_time || (v.checkin_time ? new Date(v.checkin_time).toLocaleTimeString("zh-TW", {hour:"2-digit",minute:"2-digit"}) : v.created_at ? new Date(v.created_at).toLocaleTimeString("zh-TW", {hour:"2-digit",minute:"2-digit"}) : "-")}</td>
+                  <td style={{ ...td, fontWeight: 500 }}>{v.customer_name || v.customer_id?.slice(0, 8)}</td>
+                  <td style={{ ...td, fontSize: 11, color: "#888", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.company_address || "-"}</td>
+                  <td style={{ ...td, fontSize: 11, fontFamily: "monospace" }}>{v.checkin_gps_lat ? Number(v.checkin_gps_lat).toFixed(4) + ", " + Number(v.checkin_gps_lng).toFixed(4) : "-"}</td>
+                  <td style={{ ...td, fontSize: 11, fontFamily: "monospace" }}>{v.cust_lat ? Number(v.cust_lat).toFixed(4) + ", " + Number(v.cust_lng).toFixed(4) : "-"}</td>
+                  <td style={{ ...td, fontWeight: 600 }}><span style={{ background: db, color: dc, padding: "2px 8px", borderRadius: 3, fontSize: 12 }}>{dl}</span></td>
+                  <td style={td}><span style={ts(STATUS_MAP[v.status]?.bg || "#f0f0f0", STATUS_MAP[v.status]?.color || "#666")}>{STATUS_MAP[v.status]?.label || v.status}</span></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
   const renderTable = (rows: any[], showActions: boolean) => (
     <div style={cb}>
       <div style={{ overflowX: "auto" }}>
@@ -284,7 +316,7 @@ export default function VisitsPage() {
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <span style={ts(STATUS_MAP[v.status]?.bg || "#f0f0f0", STATUS_MAP[v.status]?.color || "#666")}>{STATUS_MAP[v.status]?.label || v.status}</span>
-                  {v.status === "PLANNED" && <button onClick={() => doCheckin(v.visit_id)} style={{ ...bp, height: 28, fontSize: 12, padding: "0 12px" }}>GPS簽到</button>}
+                  {v.status === "PLANNED" && <button onClick={() => doCheckin(v.visit_id)} style={{ ...bp, height: 28, fontSize: 12, padding: "0 12px" }}>簽到</button>}
                   {v.status === "CHECKED_IN" && <button onClick={() => doCheckout(v.visit_id)} style={{ ...bp, height: 28, fontSize: 12, padding: "0 12px", background: "#52c41a" }}>簽退</button>}
                 </div>
               </div>
@@ -368,7 +400,7 @@ export default function VisitsPage() {
             <h3 style={{ fontSize: 15, fontWeight: 600, color: "#333", marginBottom: 12 }}>已完成拜訪記錄</h3>
             {loading ? <div style={{ textAlign: "center", padding: 40, color: "#999" }}>載入中...</div> :
              completedVisits.length === 0 ? <div style={{ textAlign: "center", padding: 40, color: "#999" }}>尚無已完成拜訪記錄</div> :
-             renderTable(completedVisits, true)}
+             renderTable(completedVisits, true)} {isAdmin && (<><h3 style={{ fontSize: 15, fontWeight: 600, color: "#333", marginTop: 24, marginBottom: 12 }}>📍 打卡距離分析（管理員）</h3>{renderAdminTable(adminVisits)}</>)}
           </div>
         )}
       </div>
@@ -417,9 +449,9 @@ export default function VisitsPage() {
                 if (!recForm.customer_id) { alert("請選擇客戶"); return; }
                 setSaving(true);
                 try {
-                  await api.post("/visits/records", { customer_id: recForm.customer_id, visit_type: recForm.visit_type || "ROUTINE", notes: recForm.notes });
+                  let lat, lng; try { const pos = await new Promise<any>((resolve, reject) => { if (!navigator.geolocation) return reject(new Error("no gps")); navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000 }); }); lat = pos.coords.latitude; lng = pos.coords.longitude; } catch { const mlat = prompt("無法自動取得GPS\n請手動輸入緯度：", "25.0330"); if (!mlat) { setSaving(false); return; } const mlng = prompt("請手動輸入經度：", "121.5654"); if (!mlng) { setSaving(false); return; } lat = parseFloat(mlat); lng = parseFloat(mlng); if (isNaN(lat) || isNaN(lng)) { alert("坐標格式錯誤"); setSaving(false); return; } } await api.post("/visits/records", { customer_id: recForm.customer_id, visit_type: recForm.visit_type || "ROUTINE", notes: recForm.notes, gps_latitude: lat, gps_longitude: lng });
                   setShowAddVisitModal(false);
-                  fetchPlanned(); fetchToday(); fetchRecords();
+                  fetchVisits(); fetchToday(); api.get("/visits/admin/all").then((r: any) => { setAdminVisits(r.data?.visits || []); setAdminThresholds(r.data?.thresholds || {}); }).catch(() => {});
                 } catch (e: any) { alert(e?.response?.data?.message || "操作失敗"); }
                 setSaving(false);
               }} disabled={saving} style={{ ...bp, opacity: saving ? 0.6 : 1 }}>{saving ? "建立中..." : "確認新增"}</button>

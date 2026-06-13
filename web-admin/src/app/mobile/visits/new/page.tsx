@@ -98,11 +98,29 @@ export default function MobileNewVisitPage() {
     if (!recCustomerId) { alert("請選擇客戶"); return; }
     setSaving(true);
     try {
+      // GPS capture
+      let lat: number, lng: number;
+      try {
+        const pos = await new Promise<any>((resolve, reject) => {
+          if (!navigator.geolocation) return reject(new Error("no gps"));
+          navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000 });
+        });
+        lat = pos.coords.latitude; lng = pos.coords.longitude;
+      } catch {
+        const mlat = prompt("無法自動取得GPS\n請手動輸入緯度：", "25.0330");
+        if (!mlat) { setSaving(false); return; }
+        const mlng = prompt("請手動輸入經度：", "121.5654");
+        if (!mlng) { setSaving(false); return; }
+        lat = parseFloat(mlat); lng = parseFloat(mlng);
+        if (isNaN(lat) || isNaN(lng)) { alert("坐標格式錯誤"); setSaving(false); return; }
+      }
       const payload: any = {
         customer_id: recCustomerId,
         visit_date: recDate,
         visit_type: recType,
-        visit_purpose: recPurpose
+        visit_purpose: recPurpose,
+        gps_latitude: lat,
+        gps_longitude: lng
       };
       if (recResult) payload.result_code = recResult;
       if (recNotes.trim()) payload.notes = recNotes.trim();

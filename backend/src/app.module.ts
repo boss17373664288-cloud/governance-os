@@ -1,4 +1,4 @@
-﻿import { Module } from "@nestjs/common";
+import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { BullModule } from "@nestjs/bull";
@@ -35,6 +35,10 @@ import { SystemModule } from "./modules/system/system.module";
 import { CompanyModule } from "./modules/company/company.module";
 import { GoodsReceiptModule } from "./modules/goods-receipt/goods-receipt.module";
 import { AccountingModule } from "./modules/accounting/accounting.module";
+import { ExpenseModule } from "./modules/expense/expense.module";
+import { PayrollModule } from "./modules/payroll/payroll.module";
+import { CommissionModule } from "./modules/commission/commission.module";
+import { ReferralModule } from "./modules/referral/referral.module";
 import { NotificationModule } from "./modules/notification/notification.module";
 import { DepartmentModule } from "./modules/department/department.module";
 import { RoleModule } from "./modules/role/role.module";
@@ -55,6 +59,10 @@ import { DelegationModule } from "./modules/delegation/delegation.module";
     SampleModule, VisitModule, PrintModule, ImportModule,
     OcrModule, SosModule, BiModule, SystemModule, NotificationModule,
     DepartmentModule, RoleModule, DelegationModule, GoodsReceiptModule, AccountingModule,
+    ExpenseModule,
+    PayrollModule,
+    CommissionModule,
+    ReferralModule,
   ],
   providers: [MigrationService],
 })

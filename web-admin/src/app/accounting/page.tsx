@@ -30,9 +30,12 @@ export default function AccountingPage() {
   const [showAcctModal, setShowAcctModal] = useState(false);
   const [editingAcct, setEditingAcct] = useState<any>(null);
   const [acctForm, setAcctForm] = useState({ account_code: "", account_name: "", account_type: "ASSET", description: "" });
+  const [acctFilterType, setAcctFilterType] = useState<string>("");
+  const [cashbookHidden, setCashbookHidden] = useState<string[]>([]);
+  const [showCashbookAcctModal, setShowCashbookAcctModal] = useState(false);
 
   const fetchAccounts = useCallback(() => { setAcctLoading(true); api.get("/accounting/accounts").then((r: any) => setAccounts(r.data || r || [])).finally(() => setAcctLoading(false)); }, []);
-  useEffect(() => { if (tab === "accounts") fetchAccounts(); }, [tab, fetchAccounts]);
+  useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
 
   const saveAccount = async () => {
     if (!acctForm.account_code || !acctForm.account_name) return alert("請填寫代碼和名稱");
@@ -41,6 +44,34 @@ export default function AccountingPage() {
       else await api.post("/accounting/accounts", acctForm);
       setShowAcctModal(false); fetchAccounts();
     } catch (e: any) { alert(e?.response?.data?.message || "失敗"); }
+  };
+
+  const toggleAccountActive = async (acct: any) => {
+    try {
+      await api.put("/accounting/accounts/" + acct.account_id, { 
+        account_name: acct.account_name, 
+        account_type: acct.account_type, 
+        description: acct.description || null,
+        is_active: !acct.is_active 
+      });
+      fetchAccounts();
+    } catch (e: any) { alert("操作失敗"); }
+  };
+
+  const fetchCashbookHidden = useCallback(() => { 
+    api.get("/accounting/cashbook-hidden").then((r: any) => setCashbookHidden(r.data || r || [])).catch(() => {}); 
+  }, []);
+  useEffect(() => { if (tab === "cashbook") fetchCashbookHidden(); }, [tab, fetchCashbookHidden]);
+
+  const toggleCashbookHidden = async (acct: any) => {
+    const isHidden = cashbookHidden.includes(acct.account_id);
+    const action = isHidden ? "顯示" : "隱藏";
+    if (!confirm("確定" + action + "此科目？(僅影響現金帳下拉選單)")) return;
+    try {
+      const newList = isHidden ? cashbookHidden.filter(id => id !== acct.account_id) : [...cashbookHidden, acct.account_id];
+      await api.put("/accounting/cashbook-hidden", { account_ids: newList });
+      setCashbookHidden(newList);
+    } catch (e: any) { alert("操作失敗"); }
   };
 
   // Journal
@@ -52,6 +83,7 @@ export default function AccountingPage() {
   const [jeLines, setJeLines] = useState<any[]>([{ account_id: "", debit: 0, credit: 0 }]);
   const [jeForm, setJeForm] = useState({ entry_date: new Date().toISOString().slice(0, 10), description: "" });
   const [jeDetail, setJeDetail] = useState<any>(null);
+  const [expDetail, setExpDetail] = useState<any>(null);
 
   const fetchEntries = useCallback(() => { setJeLoading(true); api.get("/accounting/journal", { params: { page: jePage, page_size: 15 } }).then((r: any) => { setEntries(r.data?.items || r.items || []); setJePagination(r.data?.pagination || r.pagination || {}); }).finally(() => setJeLoading(false)); }, [jePage]);
   useEffect(() => { if (tab === "journal") fetchEntries(); }, [tab, jePage, fetchEntries]);
@@ -62,7 +94,15 @@ export default function AccountingPage() {
   };
 
   const openJeDetail = async (id: string) => {
-    try { const r: any = await api.get("/accounting/journal/" + id); setJeDetail(r); } catch (e) { alert("載入失敗"); }
+    try {
+      const r: any = await api.get("/accounting/journal/" + id);
+      const data = r.data || r;
+      setJeDetail(data);
+      setExpDetail(null);
+      if (data.source_type === "EXPENSE_REIMBURSEMENT" && data.source_id) {
+        api.get("/expense/" + data.source_id).then((er: any) => setExpDetail(er.data || er)).catch(function() {});
+      }
+    } catch (e) { alert("載入失敗"); }
   };
 
   // Ledger
@@ -90,7 +130,7 @@ export default function AccountingPage() {
   const [editingPc, setEditingPc] = useState<any>(null);
   const [pcForm, setPcForm] = useState({ transaction_date: new Date().toISOString().slice(0, 10), type: "EXPENSE", amount: "", category: "雜項", description: "" });
 
-  const CATEGORIES = ["文具用品", "差旅交通", "伙食費", "郵電費", "修繕", "雜支", "交際費", "運費", "其他"];
+  const cashbookAccounts = accounts.filter((a: any) => (a.account_type === "CASHBOOK" || a.account_type === "EXPENSE") && a.is_active && !cashbookHidden.includes(a.account_id));
 
   const fetchPettyCash = useCallback(() => { setPcLoading(true); api.get("/accounting/petty-cash", { params: { start_date: pcStartDate || undefined, end_date: pcEndDate || undefined } }).then((r: any) => setPcList(r.data || r)).finally(() => setPcLoading(false)); }, [pcStartDate, pcEndDate]);
   useEffect(() => { if (tab === "cashbook") fetchPettyCash(); }, [tab, fetchPettyCash]);
@@ -168,7 +208,10 @@ export default function AccountingPage() {
 
         {/* ====== Accounts ====== */}
         {tab === "accounts" && (<>
-          <div style={{ marginBottom: 12 }}><button onClick={() => { setEditingAcct(null); setAcctForm({ account_code: "", account_name: "", account_type: "ASSET", description: "" }); setShowAcctModal(true); }} style={bp}>+ 新增科目</button></div>
+          <div style={{ marginBottom: 12 }}><button onClick={() => { setEditingAcct(null); setAcctForm({ account_code: "", account_name: "", account_type: "ASSET", description: "" }); setShowAcctModal(true); }} style={bp}>+ 新增科目</button>
+          <div style={{ marginBottom: 12, display: "flex", gap: 6 }}>
+            <button onClick={() => setAcctFilterType(acctFilterType === "CASHBOOK_EXPENSE" ? "" : "CASHBOOK_EXPENSE")} style={{ height: 32, padding: "0 14px", borderRadius: 4, border: "none", background: acctFilterType === "CASHBOOK" ? "#1890ff" : "#f0f0f0", color: acctFilterType === "CASHBOOK" ? "#fff" : "#666", fontSize: 13, cursor: "pointer" }}>現金帳可用科目</button>
+          </div></div>
           {acctLoading ? <div style={{ textAlign: "center", padding: 40, color: "#999" }}>載入中...</div> : (
             <div style={cb}><table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr style={{ background: "#fafafa" }}>
@@ -179,7 +222,7 @@ export default function AccountingPage() {
                 <th style={{ padding: "8px 12px", fontSize: 12, color: "#888", textAlign: "center", borderBottom: "1px solid #f0f0f0", width: 80 }}>操作</th>
               </tr></thead>
               <tbody>
-                {accounts.map((a: any, i: number) => (
+                {accounts.filter((a: any) => !acctFilterType || (acctFilterType === "CASHBOOK_EXPENSE" ? (a.account_type === "CASHBOOK" || a.account_type === "EXPENSE") : a.account_type === acctFilterType)).map((a: any, i: number) => (
                   <tr key={a.account_id} style={{ background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
                     <td style={{ padding: "8px 12px", fontSize: 13, fontFamily: "monospace", borderBottom: "1px solid #f0f0f0" }}>{a.account_code}</td>
                     <td style={{ padding: "8px 12px", fontSize: 13, borderBottom: "1px solid #f0f0f0" }}>{a.account_name}</td>
@@ -187,6 +230,8 @@ export default function AccountingPage() {
                     <td style={{ padding: "8px 12px", textAlign: "center", borderBottom: "1px solid #f0f0f0" }}><span style={{ fontSize: 11, color: a.is_active ? "#52c41a" : "#ff4d4f" }}>{a.is_active ? "啟用" : "停用"}</span></td>
                     <td style={{ padding: "4px", textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
                       <button onClick={() => { setEditingAcct(a); setAcctForm({ account_code: a.account_code, account_name: a.account_name, account_type: a.account_type, description: a.description || "" }); setShowAcctModal(true); }} style={{ height: 24, padding: "0 8px", borderRadius: 3, border: "1px solid #1890ff", background: "#fff", color: "#1890ff", fontSize: 11, cursor: "pointer" }}>編輯</button>
+                      <button onClick={() => toggleAccountActive(a)} style={{ height: 24, padding: "0 8px", borderRadius: 3, border: a.is_active ? "1px solid #ff4d4f" : "1px solid #52c41a", background: "#fff", color: a.is_active ? "#ff4d4f" : "#52c41a", fontSize: 11, cursor: "pointer", marginLeft: 4 }}>{a.is_active ? "停用" : "啟用"}</button>
+                      {acctFilterType === "CASHBOOK_EXPENSE" && (a.is_active ? <button onClick={() => toggleCashbookHidden(a)} style={{ height: 24, padding: "0 8px", borderRadius: 3, border: cashbookHidden.includes(a.account_id) ? "1px solid #52c41a" : "1px solid #ff4d4f", background: "#fff", color: cashbookHidden.includes(a.account_id) ? "#52c41a" : "#ff4d4f", fontSize: 11, cursor: "pointer", marginLeft: 4 }}>{cashbookHidden.includes(a.account_id) ? "顯示" : "隱藏"}</button> : <span style={{ marginLeft: 4, fontSize: 10, color: "#ccc" }}>已停用</span>)}
                     </td>
                   </tr>
                 ))}
@@ -208,6 +253,59 @@ export default function AccountingPage() {
             </div>
           </div>)}
         </>)}
+
+                {/* Cashbook Account Management Modal */}
+        {showCashbookAcctModal && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={e => { if (e.target === e.currentTarget) setShowCashbookAcctModal(false); }}>
+            <div style={{ background: "#fff", borderRadius: 8, padding: 24, width: 600, maxHeight: "80vh", overflow: "auto" }}>
+              <h3 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 16px" }}>現金帳科目管理</h3>
+              
+              <div style={{ marginBottom: 16, maxHeight: 300, overflow: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr style={{ background: "#fafafa" }}>
+                    <th style={{ padding: "8px 12px", fontSize: 12, color: "#888", textAlign: "left", borderBottom: "1px solid #f0f0f0" }}>代碼</th>
+                    <th style={{ padding: "8px 12px", fontSize: 12, color: "#888", textAlign: "left", borderBottom: "1px solid #f0f0f0" }}>名稱</th>
+                    <th style={{ padding: "8px 12px", fontSize: 12, color: "#888", textAlign: "center", width: 160, borderBottom: "1px solid #f0f0f0" }}>操作</th>
+                  </tr></thead>
+                  <tbody>
+                    {accounts.filter((a: any) => a.account_type === "CASHBOOK").map((a: any) => (
+                      <tr key={a.account_id}>
+                        <td style={{ padding: "6px 12px", fontSize: 13, fontFamily: "monospace", borderBottom: "1px solid #f0f0f0" }}>{a.account_code}</td>
+                        <td style={{ padding: "6px 12px", fontSize: 13, borderBottom: "1px solid #f0f0f0" }}>{a.account_name}</td>
+                        <td style={{ padding: "4px", textAlign: "center", borderBottom: "1px solid #f0f0f0" }}>
+                          <button onClick={() => { setEditingAcct(a); setAcctForm({ account_code: a.account_code, account_name: a.account_name, account_type: a.account_type, description: a.description || "" }); }} style={{ height: 24, padding: "0 8px", borderRadius: 3, border: "1px solid #1890ff", background: "#fff", color: "#1890ff", fontSize: 11, cursor: "pointer", marginRight: 4 }}>編輯</button>
+                          <button onClick={() => toggleCashbookHidden(a)} style={{ height: 24, padding: "0 8px", borderRadius: 3, border: cashbookHidden.includes(a.account_id) ? "1px solid #52c41a" : "1px solid #ff4d4f", background: "#fff", color: cashbookHidden.includes(a.account_id) ? "#52c41a" : "#ff4d4f", fontSize: 11, cursor: "pointer" }}>{cashbookHidden.includes(a.account_id) ? "顯示" : "隱藏"}</button>
+                        </td>
+                      </tr>
+                    ))}
+                    {accounts.filter((a: any) => a.account_type === "CASHBOOK").length === 0 && (
+                      <tr><td colSpan={3} style={{ textAlign: "center", padding: 20, color: "#999", fontSize: 13 }}>尚無現金帳科目，請新增</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <hr style={{ border: "none", borderTop: "1px solid #f0f0f0", margin: "16px 0" }} />
+
+              <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>{editingAcct ? "編輯科目" : "新增科目"}</h4>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>代碼 *</div>
+                  <input style={si} value={acctForm.account_code} onChange={e => setAcctForm({...acctForm, account_code: e.target.value})} disabled={!!editingAcct} placeholder="例: 1001" />
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>名稱 *</div>
+                  <input style={si} value={acctForm.account_name} onChange={e => setAcctForm({...acctForm, account_name: e.target.value})} placeholder="例: 雜項" />
+                </div>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
+                <button onClick={() => { setShowCashbookAcctModal(false); setEditingAcct(null); }} style={{ height: 36, padding: "0 20px", borderRadius: 4, border: "1px solid #d9d9d9", background: "#fff", color: "#666", fontSize: 14, cursor: "pointer" }}>關閉</button>
+                <button onClick={async () => { await saveAccount(); fetchCashbookHidden(); }} style={bp}>{editingAcct ? "更新" : "新增"}</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ====== Journal ====== */}
         {tab === "journal" && (<>
@@ -312,6 +410,37 @@ export default function AccountingPage() {
                   ))}
                 </tbody>
               </table>
+              {expDetail && (
+              <div style={{ marginTop: 16, padding: 16, background: "#fafafa", borderRadius: 6, border: "1px solid #f0f0f0" }}>
+                <h4 style={{ fontSize: 14, fontWeight: 600, margin: "0 0 12px" }}>報銷明細</h4>
+                <div style={{ fontSize: 13, marginBottom: 8 }}>
+                  <span style={{ color: "#888" }}>員工：</span>
+                  <span>{expDetail.employee_name || "-"} ({expDetail.employee_no || "-"})</span>
+                  <span style={{ marginLeft: 16, color: "#888" }}>月份：</span>
+                  <span>{expDetail.expense_month ? expDetail.expense_month.slice(0,4) + "/" + expDetail.expense_month.slice(4) : "-"}</span>
+                </div>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr style={{ background: "#f5f5f5" }}>
+                    <th style={{ padding: "6px 10px", fontSize: 12, color: "#888", textAlign: "left", borderBottom: "1px solid #e5e6eb" }}>科目</th>
+                    <th style={{ padding: "6px 10px", fontSize: 12, color: "#888", textAlign: "right", borderBottom: "1px solid #e5e6eb" }}>金額</th>
+                    <th style={{ padding: "6px 10px", fontSize: 12, color: "#888", textAlign: "left", borderBottom: "1px solid #e5e6eb" }}>備註</th>
+                  </tr></thead>
+                  <tbody>
+                    {(expDetail.items || []).map(function(it, i) {
+                      return (
+                      <tr key={i}>
+                        <td style={{ padding: "6px 10px", fontSize: 13, borderBottom: "1px solid #f0f0f0" }}>{it.account_code} {it.account_name}</td>
+                        <td style={{ padding: "6px 10px", fontSize: 13, textAlign: "right", fontWeight: 500, borderBottom: "1px solid #f0f0f0" }}>${Number(it.amount || 0).toLocaleString()}</td>
+                        <td style={{ padding: "6px 10px", fontSize: 12, color: "#888", borderBottom: "1px solid #f0f0f0" }}>{it.notes || "-"}</td>
+                      </tr>
+                    )})}
+                  </tbody>
+                </table>
+                <div style={{ textAlign: "right", marginTop: 8, fontSize: 14, fontWeight: 600 }}>
+                  合計：${Number(expDetail.total_amount || 0).toLocaleString()}
+                </div>
+              </div>
+            )}
               <div style={{ textAlign: "right", marginTop: 12 }}><button onClick={() => setJeDetail(null)} style={{ height: 32, padding: "0 16px", borderRadius: 4, border: "1px solid #d9d9d9", background: "#fff", color: "#666", fontSize: 13, cursor: "pointer" }}>關閉</button></div>
             </div>
           </div>)}
@@ -429,6 +558,7 @@ export default function AccountingPage() {
               <input type="date" value={pcEndDate} onChange={e => setPcEndDate(e.target.value)} style={{ height: 36, padding: "0 8px", borderRadius: 4, border: "1px solid #d9d9d9", fontSize: 13 }} />
               <button onClick={fetchPettyCash} style={{ height: 36, padding: "0 16px", borderRadius: 4, border: "1px solid #d9d9d9", background: "#fff", fontSize: 13, cursor: "pointer" }}>查詢</button>
             </div>
+            <button onClick={() => { setEditingAcct(null); setAcctForm({ account_code: "", account_name: "", account_type: "CASHBOOK", description: "" }); setShowCashbookAcctModal(true); }} style={{ ...bp, background: "#fff", color: "#1890ff", border: "1px solid #1890ff" }}>管理科目</button>
             <button onClick={() => { setEditingPc(null); setPcForm({ transaction_date: new Date().toISOString().slice(0, 10), type: "EXPENSE", amount: "", category: "雜項", description: "" }); setShowPcModal(true); }} style={bp}>+ 新增收支</button>
           </div>
           {pcLoading ? <div style={{ textAlign: "center", padding: 60, color: "#999" }}>載入中...</div> : (
@@ -486,7 +616,7 @@ export default function AccountingPage() {
                 <div><div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>金額</div><input type="number" value={pcForm.amount} onChange={e => setPcForm({ ...pcForm, amount: e.target.value })} style={si} min="0" /></div>
                 <div><div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>類別</div>
                   <select value={pcForm.category} onChange={e => setPcForm({ ...pcForm, category: e.target.value })} style={si}>
-                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    {cashbookAccounts.map((a: any) => <option key={a.account_id} value={a.account_name}>{a.account_code} {a.account_name}</option>)}
                   </select>
                 </div>
                 <div><div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>摘要</div><input value={pcForm.description} onChange={e => setPcForm({ ...pcForm, description: e.target.value })} style={si} placeholder="備註說明" /></div>

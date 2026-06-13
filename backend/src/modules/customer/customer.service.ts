@@ -41,10 +41,7 @@ export class CustomerService {
     const typePrefix = zipNum >= 100 && zipNum <= 399 ? "N" : zipNum >= 400 && zipNum <= 599 ? "M" : "S";
     const seq = await this.customerRepo.count({ where: { company_zip_code: Like(zipPrefix + "%") } });
     const customerCode = typePrefix + zipPrefix + String(seq + 1).padStart(5, "0");
-    return this.customerRepo.save({
-      customer_id: uuidv4(), ...dto, customer_code: customerCode,
-      customer_status: "LEAD", created_by: userId, owning_employee_id: userId,
-    } as any);
+    const defaultCompany = await this.customerRepo.manager.query("SELECT company_id FROM company LIMIT 1"); const defaultCompanyId = defaultCompany[0]?.company_id || uuidv4(); return this.customerRepo.save({ customer_id: uuidv4(), ...dto, customer_code: customerCode, customer_status: "LEAD", created_by: userId, owning_employee_id: userId, company_id: dto.company_id || defaultCompanyId, tenant_id: dto.tenant_id || uuidv4(), } as any);
   }
 
   async update(id: string, dto: UpdateCustomerDto, userId: string): Promise<Customer> {

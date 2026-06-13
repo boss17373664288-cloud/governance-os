@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards } from "@nestjs/common";
+﻿import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { AccountingService } from "./accounting.service";
 import { CurrentUser } from "../../core/auth/decorators/current-user.decorator";
@@ -9,6 +9,9 @@ export class AccountingController {
   constructor(private readonly service: AccountingService) {}
 
   @Get("accounts") getAccounts() { return this.service.getAccounts(); }
+
+  @Get("cashbook-hidden") getCashbookHidden() { return this.service.getCashbookHidden(); }
+  @Put("cashbook-hidden") updateCashbookHidden(@Body() body: { account_ids: string[] }) { return this.service.updateCashbookHidden(body.account_ids); }
   @Post("accounts") createAccount(@Body() dto: any) { return this.service.createAccount(dto); }
   @Put("accounts/:id") updateAccount(@Param("id") id: string, @Body() dto: any) { return this.service.updateAccount(id, dto); }
 

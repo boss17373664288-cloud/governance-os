@@ -1,5 +1,5 @@
 ﻿import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsNumber, IsUUID } from "class-validator";
-import { Type } from "class-transformer";
+import { Type, Transform } from "class-transformer";
 
 export class CreateCustomerDto {
   @IsOptional() @IsString() old_erp_customer_code?: string;
@@ -43,8 +43,8 @@ export class CreateCustomerDto {
   @IsOptional() @IsString() bank_account?: string;
   @IsOptional() @IsString() bank_account_name?: string;
   @IsOptional() @IsString() invoice_tax_id?: string;
-  @IsUUID() @IsNotEmpty() company_id: string;
-  @IsUUID() @IsNotEmpty() tenant_id: string;
+  @IsOptional() @IsString() company_id?: string;
+  @IsOptional() @IsString() tenant_id?: string;
 }
 
 export class UpdateCustomerDto {
@@ -113,3 +113,6 @@ export class UpdateCustomerDto {
   @IsOptional() @IsString() bank_account_name?: string;
   @IsOptional() @IsString() invoice_tax_id?: string;
 }
+
+
+

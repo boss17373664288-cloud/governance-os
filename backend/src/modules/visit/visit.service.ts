@@ -103,4 +103,12 @@ export class VisitService {
     this.logger.log("Visit record created for customer: " + dto.customer_id);
     return { ...saved[0], distance_info: distanceInfo };
   }
+
+  async getAllWithDistance() {
+    const p = await this.em.query("SELECT param_key, param_value FROM system_param WHERE param_key IN ('checkin_distance_warning', 'checkin_distance_alert')");
+    const w = Number((p.find((x) => x.param_key === 'checkin_distance_warning') || {}).param_value) || 500;
+    const a = Number((p.find((x) => x.param_key === 'checkin_distance_alert') || {}).param_value) || 2000;
+    const rows = await this.em.query("SELECT v.*, cm.customer_name, cm.latitude as cust_lat, cm.longitude as cust_lng, cm.company_address, CASE WHEN v.checkin_gps_lat IS NOT NULL AND cm.latitude IS NOT NULL THEN ROUND(CAST(6371000*2*ATAN2(SQRT(SIN(RADIANS(cm.latitude-v.checkin_gps_lat)/2)^2+COS(RADIANS(v.checkin_gps_lat))*COS(RADIANS(cm.latitude))*SIN(RADIANS(cm.longitude-v.checkin_gps_lng)/2)^2),SQRT(1-(SIN(RADIANS(cm.latitude-v.checkin_gps_lat)/2)^2+COS(RADIANS(v.checkin_gps_lat))*COS(RADIANS(cm.latitude))*SIN(RADIANS(cm.longitude-v.checkin_gps_lng)/2)^2))) AS numeric),1) ELSE NULL END as distance_meters FROM visit v LEFT JOIN customer_master cm ON cm.customer_id=v.customer_id ORDER BY v.visit_date DESC LIMIT 200");
+    return { thresholds: { warning_meters: w, alert_meters: a }, visits: rows.map((r) => ({ ...r, distance_meters: r.distance_meters ? Number(r.distance_meters) : null, distance_within_range: r.distance_meters !== null ? Number(r.distance_meters) <= w : null })) };
+  }
 }

@@ -1,0 +1,71 @@
+﻿<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>TGOS 測試</title>
+<script src="https://api.tgos.tw/MOIMAPService/MOIMAP?APIKEY=u76anvEx3APOCuo83efDMr2m8LUQKcThjpzHij0nRCSmTRYmACfHk/arySmhOHXoa6L2Hx8V8QyoHG4txcau0mBEGa60c4f67/wE1zFquSoaV9zeyb+T/pqD1j+wHnRn"></script>
+</head><body>
+<h2>TGOS 測試 (5筆)</h2>
+<div id="TGMap" style="width:1px;height:1px;position:absolute;top:-9999px"></div>
+<div id="status"></div>
+<script>
+var CUSTOMERS = [{id:'2da85116-2ae6-4796-ad4f-7e0532b0c049',name:'101SKIN晶漾診所',addr:'新北市新店區北新路三段145號3樓'},{id:'7ee08541-9051-47b5-bc84-61d468b966d1',name:'K Beauty時尚美學診所',addr:'台北市大安區忠孝東路四段223巷38號2樓'},{id:'3266347e-d84c-44dd-96ad-31a3216f5667',name:'W頂尖醫美診所',addr:'台北市松山區南京東路三段270號4樓'},{id:'b6d12f46-06dc-4e5b-814b-ba71dc1e3c57',name:'W頂尖醫美診所-竹北店',addr:'新竹縣竹北市文興路361號5樓'},{id:'5743fc3c-ae62-4792-b897-2cd6e961f5a0',name:'千美診所',addr:'台北市中正區新生南路一段60號3樓'}];
+var pMap = null;
+
+// Wait for TGOS to be ready
+function waitForTGOS() {
+  return new Promise((resolve) => {
+    var tries = 0;
+    function check() {
+      tries++;
+      if (typeof TGOS !== "undefined" && typeof TGOS.OnlineMap !== "undefined") {
+        document.getElementById("status").innerText = "TGOS SDK ready (tries=" + tries + ")";
+        try {
+          pMap = new TGOS.OnlineMap(document.getElementById("TGMap"), TGOS.CoordSys.EPSG3826, null, function() {
+            document.getElementById("status").innerText += " | Map ready";
+            resolve(true);
+          });
+        } catch(e) {
+          document.getElementById("status").innerText += " | Map err: " + e.message;
+          resolve(false);
+        }
+      } else if (tries > 50) {
+        document.getElementById("status").innerText = "TGOS SDK not loaded after 5s";
+        resolve(false);
+      } else {
+        setTimeout(check, 100);
+      }
+    }
+    check();
+  });
+}
+
+async function testGeocode(addr) {
+  return new Promise((resolve) => {
+    try {
+      var ls = new TGOS.LocateService(pMap);
+      ls.locateWGS84({ address: addr }, function(e) {
+        document.getElementById("status").innerText += "\nCallback: " + JSON.stringify(e).slice(0,200);
+        if (e && e.length > 0 && e[0].geometry) {
+          resolve({ lat: e[0].geometry.location.y, lng: e[0].geometry.location.x, ok: true });
+        } else {
+          resolve({ ok: false, detail: JSON.stringify(e).slice(0,100) });
+        }
+      });
+    } catch(ex) {
+      resolve({ ok: false, err: ex.message });
+    }
+  });
+}
+
+async function go() {
+  var ready = await waitForTGOS();
+  if (!ready) return;
+  
+  for (var i = 0; i < CUSTOMERS.length; i++) {
+    var c = CUSTOMERS[i];
+    document.getElementById("status").innerText += "\n[" + (i+1) + "] " + c.name + ": " + c.addr.slice(0,20) + "...";
+    var r = await testGeocode(c.addr);
+    document.getElementById("status").innerText += " => " + (r.ok ? ("OK " + r.lat + "," + r.lng) : ("FAIL " + (r.detail||r.err||"")));
+    await new Promise(r => setTimeout(r, 500));
+  }
+}
+go();
+</script></body></html>

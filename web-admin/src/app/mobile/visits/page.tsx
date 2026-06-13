@@ -97,7 +97,7 @@ export default function MobileVisitsPage() {
       }
 
       await api.post("/visits/checkin", { visit_id: visitId, gps_latitude: lat, gps_longitude: lng });
-      alert("簽到成功（" + lat.toFixed(4) + ", " + lng.toFixed(4) + "）");
+      alert("簽到成功");
       fetchVisits();
     } catch (e: any) { alert(e?.response?.data?.message || "簽到失敗"); }
   };

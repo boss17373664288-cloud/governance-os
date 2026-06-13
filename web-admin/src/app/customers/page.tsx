@@ -68,7 +68,7 @@ export default function CustomersPage() {
       if (editing) {
         await api.put("/customers/" + editing.customer_id, form);
       } else {
-        await api.post("/customers", { ...form, company_id: "00000000-0000-0000-0000-000000000001", tenant_id: "00000000-0000-0000-0000-000000000001" });
+        await api.post("/customers", form);
       }
       alert(editing ? "客戶已更新" : "客戶已建立");
       setShowForm(false);

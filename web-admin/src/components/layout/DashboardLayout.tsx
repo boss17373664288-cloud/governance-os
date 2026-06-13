@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -19,27 +19,43 @@ function NotificationBadge() {
   return <span style={{ position: "absolute", top: -8, right: -10, background: "#ff4d4f", color: "#fff", borderRadius: "50%", width: 18, height: 18, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600 }}>{count > 99 ? "99+" : count}</span>;
 }
 
-const menuItems = [
-  { label: "儀表板", path: "/bi" },
-  { label: "客戶管理", path: "/customers" },
-  { label: "產品管理", path: "/products" },
-  { label: "庫存管理", path: "/inventory" },
-  { label: "收貨管理", path: "/goods-receipt" },
-  { label: "寄庫管理", path: "/consignment" },
-  { label: "供應商管理", path: "/suppliers" },
-{ label: "業務拜訪", path: "/visits" },
-{ label: "預算控制", path: "/budget" },
-  { label: "樣品/打板", path: "/samples" },
-  { label: "銷售訂單", path: "/orders" },
-  { label: "召回管理", path: "/recall" },
-  { label: "採購管理", path: "/purchase" },
-  { label: "財務管理", path: "/finance" },
-  { label: "會計管理", path: "/accounting" },
-  { label: "通知中心", path: "/notifications" },
-{ label: "表單中心", path: "/forms" },
-    { label: "打印模板", path: "/print" },
-  { label: "SOS安全", path: "/sos" },
-{ label: "系統設置", path: "/system" },
+const menuGroups = [
+  { title: "總覽", items: [
+    { label: "儀表板", path: "/bi", icon: "📊" },
+  ]},
+  { title: "客戶與業務", items: [
+    { label: "客戶管理", path: "/customers", icon: "👥" },
+    { label: "業務拜訪", path: "/visits", icon: "🏃" },
+    { label: "銷售訂單", path: "/orders", icon: "📝" },
+  ]},
+  { title: "產品與庫存", items: [
+    { label: "產品管理", path: "/products", icon: "📦" },
+    { label: "庫存管理", path: "/inventory", icon: "🏭" },
+    { label: "收貨管理", path: "/goods-receipt", icon: "📥" },
+    { label: "寄庫管理", path: "/consignment", icon: "🔄" },
+    { label: "樣品/打板", path: "/samples", icon: "🧪" },
+    { label: "召回管理", path: "/recall", icon: "⚠️" },
+  ]},
+  { title: "供應鏈", items: [
+    { label: "供應商管理", path: "/suppliers", icon: "🚚" },
+    { label: "採購管理", path: "/purchase", icon: "🛒" },
+  ]},
+  { title: "財務", items: [
+    { label: "財務管理", path: "/finance", icon: "💰" },
+    { label: "會計管理", path: "/accounting", icon: "🧾" },
+    { label: "預算控制", path: "/budget", icon: "💵" },
+    { label: "報銷管理", path: "/expense", icon: "📄" },
+    { label: "薪酬管理", path: "/payroll", icon: "💸" },
+    { label: "銷售獎金", path: "/commission", icon: "🏆" },
+    { label: "介紹人酬謝", path: "/referral", icon: "🤝" },
+  ]},
+  { title: "系統", items: [
+    { label: "通知中心", path: "/notifications", icon: "🔔" },
+    { label: "表單中心", path: "/forms", icon: "📋" },
+    { label: "打印模板", path: "/print", icon: "🖨️" },
+    { label: "SOS安全", path: "/sos", icon: "🆘" },
+    { label: "系統設置", path: "/system", icon: "⚙️" },
+  ]},
 ];
 
 const styles = {
@@ -133,7 +149,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (p === "/bi") return pathname === "/bi" || pathname === "/dashboard";
     return pathname?.startsWith(p);
   };
-  const pageTitle = menuItems.find(m => isActive(m.path))?.label || "儀表板";
+  const allItems = menuGroups.flatMap(g => g.items); const pageTitle = allItems.find(m => isActive(m.path))?.label || "儀表板";
 
   return (
     <div style={styles.layout}>
@@ -144,18 +160,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <span style={styles.logoText}>治理作業系統</span>
         </div>
         <nav style={styles.nav}>
-          {menuItems.map(item => {
-            const active = isActive(item.path);
-            return (
-              <Link key={item.path + item.label} href={item.path} style={{
-                ...styles.navLinkBase,
-                color: active ? "#fff" : "rgba(255,255,255,0.65)",
-                background: active ? "#1890ff" : "transparent",
-              }}>
-                {item.label}
-              </Link>
-            );
-          })}
+          {menuGroups.map((group, gi) => (
+            <div key={gi} style={{ marginBottom: gi < menuGroups.length - 1 ? 8 : 0 }}>
+              <div style={{ padding: "8px 24px 4px", fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 1 }}>{group.title}</div>
+              {group.items.map(item => {
+                const active = isActive(item.path);
+                return (
+                  <Link key={item.path + item.label} href={item.path} style={{
+                    ...styles.navLinkBase,
+                    color: active ? "#fff" : "rgba(255,255,255,0.65)",
+                    background: active ? "#1890ff" : "transparent",
+                    gap: 8,
+                  }}>
+                    <span style={{ fontSize: 15, width: 20, textAlign: "center", flexShrink: 0 }}>{item.icon}</span>
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
       </div>
 

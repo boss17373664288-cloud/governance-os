@@ -1,4 +1,4 @@
-import { Injectable, HttpException, HttpStatus } from "@nestjs/common";
+﻿import { Injectable, HttpException, HttpStatus } from "@nestjs/common";
 import { InjectEntityManager } from "@nestjs/typeorm";
 import { EntityManager } from "typeorm";
 import { v4 as uuidv4 } from "uuid";
@@ -62,6 +62,13 @@ export class AccountingService {
         );
         item.source_ref = orders.length > 0 ? orders[0].order_no : item.source_id;
         item.customer_name = orders.length > 0 ? orders[0].customer_name : null;
+      } else if (item.source_type === "EXPENSE_REIMBURSEMENT") {
+        const exps = await this.em.query("SELECT expense_no, employee_id FROM expense_reimbursement WHERE expense_id = \$1", [item.source_id]);
+        item.source_ref = exps.length > 0 ? exps[0].expense_no : item.source_id;
+        if (exps.length > 0) {
+          const emps = await this.em.query("SELECT full_name FROM employee_master WHERE employee_id = \$1", [exps[0].employee_id]);
+          item.customer_name = emps.length > 0 ? emps[0].full_name : null;
+        }
       } else if (item.source_type === "AP_PAYMENT") {
         const aps = await this.em.query("SELECT s.supplier_name FROM ap_detail ap JOIN supplier_master s ON s.supplier_id = ap.supplier_id WHERE ap.ap_id = $1", [item.source_id]);
         item.source_ref = aps.length > 0 ? "付-" + aps[0].supplier_name : item.source_id;
@@ -453,4 +460,20 @@ export class AccountingService {
        cust.payment_terms || null, cust.closing_day || null, cust.invoice_date || null, cust.credit_days || null, userId]
     );
   }
+
+
+  // Cashbook hidden accounts
+  async getCashbookHidden() {
+    const r = await this.em.query("SELECT param_value FROM system_param WHERE param_key = 'CASHBOOK_HIDDEN_ACCOUNTS'");
+    return r.length > 0 ? (r[0].param_value || []) : [];
+  }
+
+  async updateCashbookHidden(accountIds: string[]) {
+    await this.em.query(
+      "UPDATE system_param SET param_value = $1, updated_at = CURRENT_TIMESTAMP WHERE param_key = 'CASHBOOK_HIDDEN_ACCOUNTS'",
+      [JSON.stringify(accountIds)]
+    );
+    return { hidden_ids: accountIds };
+  }
+
 }

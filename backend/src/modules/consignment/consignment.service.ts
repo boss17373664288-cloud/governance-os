@@ -189,8 +189,24 @@ export class ConsignmentService {
       const src = products.find((p: any) => p.product_id === dto.source_product_id);
       const tgt = products.find((p: any) => p.product_id === dto.target_product_id);
       if (!src || !tgt) throw new HttpException({ errorCode: "CONSIGN_002", message: "產品不存在" }, HttpStatus.BAD_REQUEST);
-      if (src.brand_series_id !== tgt.brand_series_id) {
-        throw new HttpException({ errorCode: "CONSIGN_003", message: "限同品牌同系列產品換貨" }, HttpStatus.BAD_REQUEST);
+      // Check exchange mode from system params
+      const modeParam = await tx.query("SELECT param_value FROM system_param WHERE param_key = 'consignment_exchange_mode'");
+      const mode = modeParam.length > 0 ? JSON.parse(modeParam[0].param_value) : "SAME_SERIES";
+      
+      if (mode === "CUSTOM") {
+        const pairsParam = await tx.query("SELECT param_value FROM system_param WHERE param_key = 'consignment_exchange_allowed_pairs'");
+        const allowedPairs: any[] = pairsParam.length > 0 ? JSON.parse(pairsParam[0].param_value) : [];
+        const products2 = await tx.query("SELECT product_id, product_code FROM product_master WHERE product_id IN ($1, $2)", [dto.source_product_id, dto.target_product_id]);
+        const srcCode = products2.find((p: any) => p.product_id === dto.source_product_id)?.product_code;
+        const tgtCode = products2.find((p: any) => p.product_id === dto.target_product_id)?.product_code;
+        const allowed = allowedPairs.some((pair: any) => pair.source === srcCode && pair.target === tgtCode);
+        if (!allowed) {
+          throw new HttpException({ errorCode: "CONSIGN_003", message: "此產品組合不在換貨允許清單中" }, HttpStatus.BAD_REQUEST);
+        }
+      } else {
+        if (src.brand_series_id !== tgt.brand_series_id) {
+          throw new HttpException({ errorCode: "CONSIGN_003", message: "限同品牌同系列產品換貨" }, HttpStatus.BAD_REQUEST);
+        }
       }
 
       // Validate source ledger has enough quantity

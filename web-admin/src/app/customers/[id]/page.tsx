@@ -125,14 +125,23 @@ export default function CustomerDetailPage() {
   const refreshPmtMap = useCallback(() => { api.get("/system/enum-options/payment_terms").then((r:any)=>{ const opts = r.data||r||[]; const m:Record<string,string>={}; opts.forEach((o:any)=>m[o.code]=o.label); setPmtMap(m); }).catch(()=>{}); }, []);
   useEffect(() => { refreshPmtMap(); }, [refreshPmtMap]);
 
-  const startEdit = () => { setEditForm({ ...customer }); setEditMode(true); };
+  const startEdit = () => { setEditForm({ ...customer, latitude: customer.latitude, longitude: customer.longitude, gps_lat: customer.latitude || "", gps_lng: customer.longitude || "" }); setEditMode(true); };
   const cancelEdit = () => { setEditMode(false); };
   const saveEdit = async () => {
     if (!editForm.customer_name?.trim()) return alert("請輸入客戶名稱");
     setSaving(true);
     try {
+      let saveLat = editForm.latitude || editForm.gps_lat || null;
+      let saveLng = editForm.longitude || editForm.gps_lng || null;
+      if ((!saveLat || !saveLng) && editForm.company_address) {
+        try {
+          const res = await fetch("https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?f=json&outFields=*&maxLocations=1&address=" + encodeURIComponent(editForm.company_address));
+          const data = await res.json(); if (data?.candidates?.length > 0) { saveLat = data.candidates[0].location.y; saveLng = data.candidates[0].location.x; }
+        } catch {}
+      }
+      const { gps_lat, gps_lng, ...cleanForm } = editForm;
       const payload = {
-        ...editForm,
+        ...cleanForm,
         shipping_address: shippingAddress,
         shipping_recipient: shippingRecipient,
         shipping_recipient_phone: shippingRecipientPhone,
@@ -145,6 +154,7 @@ export default function CustomerDetailPage() {
         billing_zip: billingZip,
         working_days: JSON.stringify(workingDays),
         holidays: JSON.stringify(holidays),
+        latitude: saveLat, longitude: saveLng,
       };
       await api.put(`/customers/${id}`, payload);
       const updated = await api.get(`/customers/${id}`);
@@ -223,7 +233,7 @@ export default function CustomerDetailPage() {
                     <div style={{ ...cb, marginBottom: 16 }}>
                       <h3 style={{ fontSize: 14, fontWeight: 600, color: "#333", padding: "12px 16px", borderBottom: "1px solid #f0f0f0", margin: 0 }}>聯絡資訊</h3>
                       <div style={{ display: "grid", gap: 0 }}>
-                        {[["公司郵遞","company_zip_code"],["電話","phone"],["公司地址","company_address"],["Email","email"],["公司網址","website"],["聯絡人","contact_person"],["聯絡人電話","contact_phone"]].map(([label,field],i)=>(<div key={i} style={{padding:"12px 16px",borderBottom:"1px solid #f5f5f5"}}><div style={fl}>{label}</div>{editMode?<input style={inputS} value={editForm[field]||""} onChange={e=>setEditForm({...editForm,[field]:e.target.value})}/>:<div style={fv}>{f[field]||"-"}</div>}</div>))}
+                        {[["公司郵遞","company_zip_code"],["電話","phone"],["公司地址","company_address"],["Email","email"],["公司網址","website"]].map(([label,field],i)=>(<div key={i} style={{padding:"12px 16px",borderBottom:"1px solid #f5f5f5"}}><div style={fl}>{label}</div>{editMode?<input style={inputS} value={editForm[field]||""} onChange={e=>setEditForm({...editForm,[field]:e.target.value})}/>:<div style={fv}>{f[field]||"-"}</div>}</div>))}<div style={{padding:"12px 16px",borderBottom:"1px solid #f5f5f5"}}><div style={fl}>GPS座標</div>{editMode?<div style={{display:"flex",gap:8}}><input style={{...inputS,flex:1}} placeholder="緯度" value={editForm["gps_lat"]||""} onChange={e=>setEditForm({...editForm,gps_lat:e.target.value})}/><input style={{...inputS,flex:1}} placeholder="經度" value={editForm["gps_lng"]||""} onChange={e=>setEditForm({...editForm,gps_lng:e.target.value})}/></div>:<div style={fv}>{(f.latitude && f.longitude) ? f.latitude + ", " + f.longitude : "-"}</div>}</div><div style={{padding:"12px 16px",borderBottom:"1px solid #f5f5f5"}}><div style={fl}>聯絡人</div>{editMode?<input style={inputS} value={editForm["contact_person"]||""} onChange={e=>setEditForm({...editForm,contact_person:e.target.value})}/>:<div style={fv}>{f["contact_person"]||"-"}</div>}</div><div style={{padding:"12px 16px",borderBottom:"1px solid #f5f5f5"}}><div style={fl}>聯絡人電話</div>{editMode?<input style={inputS} value={editForm["contact_phone"]||""} onChange={e=>setEditForm({...editForm,contact_phone:e.target.value})}/>:<div style={fv}>{f["contact_phone"]||"-"}</div>}</div>}
                       </div>
                     </div>
                     <div style={cb}>
@@ -302,3 +312,7 @@ export default function CustomerDetailPage() {
     </DashboardLayout>
   );
 }
+
+
+
+

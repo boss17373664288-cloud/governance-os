@@ -27,11 +27,12 @@ const STATUS_MAP: Record<string, { label: string; bg: string; color: string }> =
 };
 
 export default function ConsignmentPage() {
+  // VERSION: v2-exchange-rules-20260613
   const [ledger, setLedger] = useState<any[]>([]);
   const [staleAlert, setStaleAlert] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [activeTab, setActiveTab] = useState<"ledger" | "stale" | "approval">("ledger");
+  const [activeTab, setActiveTab] = useState<"ledger" | "stale" | "approval" | "rules">("ledger");
 
   // Release modal
   const [showRelease, setShowRelease] = useState(false);
@@ -54,6 +55,14 @@ export default function ConsignmentPage() {
   const [releases, setReleases] = useState<any[]>([]);
   const [exchanges, setExchanges] = useState<any[]>([]);
   const [approvalLoading, setApprovalLoading] = useState(false);
+  // Exchange rules
+  const [exchangeRules, setExchangeRules] = useState<any[]>([]);
+  const [ruleForm, setRuleForm] = useState({ source: "", target: "" });
+  const [ruleSaving, setRuleSaving] = useState(false);
+  const [products, setProducts] = useState<any[]>([]);
+  // Exchange modal mode
+  const [excExchangeMode, setExcExchangeMode] = useState("SAME_SERIES");
+  const [excAllowedPairs, setExcAllowedPairs] = useState<any[]>([]);
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -70,6 +79,39 @@ export default function ConsignmentPage() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  const fetchExchangeRules = async () => {
+    try {
+      const r: any = await api.get("/system/params");
+      const list = r.data || [];
+      const pair = list.find((p: any) => p.param_key === "consignment_exchange_allowed_pairs");
+      if (pair) { setExchangeRules((() => { try { return JSON.parse(pair.param_value || "[]"); } catch { return []; } })()); }
+    } catch {}
+  };
+  const fetchProducts = async () => {
+    try {
+      const r: any = await api.get("/products", { params: { page_size: 200 } });
+      setProducts(r.data?.items || r.items || []);
+    } catch {}
+  };
+  const addExchangeRule = () => {
+    if (!ruleForm.source || !ruleForm.target) return;
+    if (exchangeRules.some((p: any) => p.source === ruleForm.source && p.target === ruleForm.target)) {
+      alert("此配對已存在"); return;
+    }
+    setExchangeRules([...exchangeRules, { source: ruleForm.source, target: ruleForm.target }]);
+    setRuleForm({ source: "", target: "" });
+  };
+  const removeExchangeRule = (i: number) => { setExchangeRules(exchangeRules.filter((_, idx) => idx !== i)); };
+  const saveExchangeRules = async () => {
+    setRuleSaving(true);
+    try {
+      await api.put("/system/params/consignment_exchange_allowed_pairs", { value: JSON.stringify(exchangeRules) });
+      alert("換貨規則已儲存");
+      fetchExchangeRules();
+    } catch (e: any) { alert(e?.response?.data?.message || "儲存失敗"); }
+    finally { setRuleSaving(false); }
+  };
+  useEffect(() => { fetchProducts(); }, []);
   useEffect(() => { if (activeTab === "approval") fetchApprovals(); }, [activeTab, fetchApprovals]);
 
   const loadCustomers = async () => {
@@ -116,16 +158,27 @@ export default function ConsignmentPage() {
   };
 
   // ====== Exchange Modal ======
-  const openExchange = async () => {
-    const customers = await loadCustomers();
-    setExcCustomers(customers);
-    const allP = await api.get("/products");
-    const products = allP.data?.items || allP.data || [];
-    setAllProducts(products);
+  const openExchange = () => {
+    
+    console.log("BEFORE setShowExchange"); setShowExchange(true); console.log("AFTER setShowExchange");
     setExcForm({ customer_id: "", source_product_id: "", target_product_id: "", quantity: 1, reason: "" });
     setExcSrcProducts([]);
-    setShowExchange(true);
+    loadCustomers().then(c => setExcCustomers(c)).catch(() => {});
+    api.get("/products").then((r: any) => setAllProducts(r.data?.items || r.data || [])).catch(() => {});
+
   };
+
+  // Fetch exchange mode + allowed pairs when modal opens
+  useEffect(() => {
+    if (!showExchange) return;
+    api.get("/system/params").then((r: any) => {
+      const list = r.data || [];
+      const m = list.find((p: any) => p.param_key === "consignment_exchange_mode");
+      const pr = list.find((p: any) => p.param_key === "consignment_exchange_allowed_pairs");
+      if (m) setExcExchangeMode(typeof m.param_value === "string" ? (() => { try { return JSON.parse(m.param_value); } catch { return m.param_value; } })() : m.param_value);
+      if (pr) setExcAllowedPairs(typeof pr.param_value === "string" ? (() => { try { return JSON.parse(pr.param_value); } catch { return pr.param_value; } })() : pr.param_value);
+    }).catch(() => {});
+  }, [showExchange]);
 
   useEffect(() => {
     if (excForm.customer_id) {
@@ -134,6 +187,7 @@ export default function ConsignmentPage() {
       });
     } else { setExcSrcProducts([]); setExcForm(prev => ({ ...prev, source_product_id: "", target_product_id: "" })); }
   }, [excForm.customer_id]);
+  useEffect(() => { if (excForm.source_product_id) setExcForm(prev => ({ ...prev, target_product_id: "" })); }, [excForm.source_product_id]);
 
   const doExchange = async () => {
     if (!excForm.customer_id || !excForm.source_product_id || !excForm.target_product_id || excForm.quantity < 1 || !excForm.reason) { alert("請填寫完整資料"); return; }
@@ -187,7 +241,7 @@ export default function ConsignmentPage() {
         <div style={{ display: "flex", gap: 0, marginBottom: 16, borderBottom: "1px solid #e5e6eb" }}>
           <button onClick={() => setActiveTab("ledger")} style={tabBtn(activeTab === "ledger")}>寄庫台帳</button>
           <button onClick={() => setActiveTab("stale")} style={tabBtn(activeTab === "stale")}>呆滯預警 {staleAlert.length > 0 ? "(" + staleAlert.length + ")" : ""}</button>
-          <button onClick={() => setActiveTab("approval")} style={tabBtn(activeTab === "approval")}>審批管理</button>
+          <button onClick={() => setActiveTab("approval")} style={tabBtn(activeTab === "approval")}>審批管理</button><button onClick={() => { setActiveTab("rules"); fetchExchangeRules(); }} style={tabBtn(activeTab === "rules")}>換貨規則</button>
         </div>
 
         {/* Ledger Tab */}
@@ -325,6 +379,35 @@ export default function ConsignmentPage() {
           </div>
         )}
 
+        {/* Exchange Rules Tab */}
+        {activeTab === "rules" && (
+          <div>
+            <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, color: "#333" }}>自訂清單</h3>
+            <div style={cb}><div style={{ padding: 16 }}>
+              <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
+                <div><div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>來源產品</div>
+                  <select style={{ ...si, width: 200 }} value={ruleForm.source} onChange={e => setRuleForm({ ...ruleForm, source: e.target.value })}>
+                    <option value="">選擇產品</option>
+                    {products.map((p: any) => <option key={p.product_code} value={p.product_code}>{p.product_code} {p.product_name}</option>)}
+                  </select></div>
+                <div><div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>目標產品</div>
+                  <select style={{ ...si, width: 200 }} value={ruleForm.target} onChange={e => setRuleForm({ ...ruleForm, target: e.target.value })}>
+                    <option value="">選擇產品</option>
+                    {products.map((p: any) => <option key={p.product_code} value={p.product_code}>{p.product_code} {p.product_name}</option>)}
+                  </select></div>
+                <button onClick={addExchangeRule} disabled={!ruleForm.source || !ruleForm.target} style={{ ...bp, height: 36, opacity: (!ruleForm.source || !ruleForm.target) ? 0.5 : 1 }}>+ 新增配對</button>
+              </div>
+              {exchangeRules.length === 0 ? <div style={{ padding: 20, textAlign: "center", color: "#999" }}>尚無換貨配對規則（自訂清單）</div> : (
+                <table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>
+                  <th style={th}>來源產品</th><th style={th}>目標產品</th><th style={th}>操作</th>
+                </tr></thead><tbody>
+                  {exchangeRules.map((pair: any, i: number) => (
+                    <tr key={i}><td style={td}>{pair.source}</td><td style={td}>{pair.target}</td>
+                      <td style={td}><button onClick={() => removeExchangeRule(i)} style={{ ...btnSm, color: "#ff4d4f", borderColor: "#ffccc7" }}>刪除</button></td></tr>
+                  ))}</tbody></table>)}
+              <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
+                <button onClick={saveExchangeRules} disabled={ruleSaving} style={{ ...bp, opacity: ruleSaving ? 0.6 : 1 }}>{ruleSaving ? "儲存中..." : "儲存規則"}</button>
+              </div></div></div></div>)}
         {/* Release Modal */}
         {showRelease && (
           <div style={modalBg} onClick={() => setShowRelease(false)}>
@@ -405,10 +488,10 @@ export default function ConsignmentPage() {
                   </select>
                 </div>
                 <div>
-                  <div style={sl}>改出產品 <span style={{ color: "#ff4d4f" }}>*</span>（限同品牌同系列）</div>
+                  <div style={sl}>改出產品 <span style={{ color: "#ff4d4f" }}>*</span>（{excExchangeMode === "CUSTOM" ? "\u81ea\u8a02\u6e05\u55ae" : "\u9650\u540c\u54c1\u724c\u540c\u7cfb\u5217"}）</div>
                   <select style={si} value={excForm.target_product_id} onChange={e => setExcForm({ ...excForm, target_product_id: e.target.value })}>
                     <option value="">請選擇目標產品</option>
-                    {allProducts.map((p: any) => <option key={p.product_id} value={p.product_id}>{p.product_code} - {p.product_name}</option>)}
+                    {allProducts.filter((p: any) => { if (excExchangeMode !== "CUSTOM" || !excForm.source_product_id) return true; const src = allProducts.find((x: any) => x.product_id === excForm.source_product_id); if (!src) return true; const allowed = excAllowedPairs.filter((pair: any) => pair.source === src.product_code).map((pair: any) => pair.target); return allowed.length === 0 || allowed.includes(p.product_code); }).map((p: any) => <option key={p.product_id} value={p.product_id}>{p.product_code} - {p.product_name}</option>)}
                   </select>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>

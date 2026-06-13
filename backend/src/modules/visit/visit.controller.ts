@@ -2,6 +2,8 @@
 import { AuthGuard } from "@nestjs/passport";
 import { VisitService } from "./visit.service";
 import { CreateVisitDto, ScheduleVisitDto, CheckinDto } from "./dto/visit.dto";
+import { Roles } from '../../core/auth/decorators/roles.decorator';
+import { RolesGuard } from '../../core/auth/guards/roles.guard';
 import { CurrentUser } from "../../core/auth/decorators/current-user.decorator";
 
 @Controller("visits")
@@ -38,5 +40,13 @@ export class VisitController {
   @Post("records")
   createRecord(@Body() dto: CreateVisitDto, @CurrentUser("employee_id") userId: string) {
     return this.visitService.createRecord(dto, userId);
+  }
+
+
+  @Get("admin/all")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN")
+  getAllWithDistance() {
+    return this.visitService.getAllWithDistance();
   }
 }
