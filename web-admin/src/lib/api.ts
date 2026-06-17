@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 // Safe toast wrapper
 const safeToast = { error: (msg: string) => { try { toast.error(msg); } catch {} } };
 
+// Use relative URL so Next.js rewrite proxies to backend
 const API_BASE = "/api/v1";
 
 export const api = axios.create({ baseURL: API_BASE });

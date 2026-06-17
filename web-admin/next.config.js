@@ -1,5 +1,6 @@
 ﻿/** @type {import('next').NextConfig} */
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+// Server-side backend URL (NOT exposed to browser)
+const BACKEND_URL = process.env.BACKEND_URL || 'https://backend-production-abe09.up.railway.app';
 
 const nextConfig = {
   output: 'standalone',
@@ -9,7 +10,7 @@ const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
   async rewrites() {
     return [
-      { source: '/api/:path*', destination: API_URL + '/api/:path*' },
+      { source: '/api/:path*', destination: BACKEND_URL + '/api/:path*' },
     ];
   },
 };
